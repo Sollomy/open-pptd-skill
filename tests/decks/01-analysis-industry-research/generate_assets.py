@@ -1,10 +1,11 @@
+from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 
-os.makedirs('open-pptd-skill/tests/decks/01-analysis-industry-research/assets', exist_ok=True)
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Set high-quality font defaults
 plt.rcParams['font.sans-serif'] = ['PingFang SC', 'Hiragino Sans GB', 'Heiti SC', 'Arial', 'DejaVu Sans']
@@ -74,7 +75,7 @@ ax.xaxis.grid(False)
 ax.legend(loc='upper left', frameon=True, facecolor='#FFFFFF', edgecolor='#E2E8F0', fontsize=8.5, ncol=2)
 
 
-fig.savefig('open-pptd-skill/tests/decks/01-analysis-industry-research/assets/global_bess_additions.png', dpi=200)
+fig.savefig(ASSETS_DIR / 'global_bess_additions.png', dpi=200)
 plt.close(fig)
 
 # -------------------------------------------------------------
@@ -127,7 +128,7 @@ ax1.set_xticklabels(periods, fontsize=9.5, color='#041C2C', fontweight='medium')
 ax1.spines['top'].set_visible(False)
 ax2.spines['top'].set_visible(False)
 ax1.spines['left'].set_color('#CBD5E1')
-ax2.spines['right'].set_color('#2151FF')
+ax1.spines['right'].set_color('#2151FF')
 ax1.spines['bottom'].set_color('#041C2C')
 ax1.yaxis.grid(True, linestyle='-', alpha=0.3, color='#E2E8F0')
 
@@ -137,6 +138,6 @@ lines2, labels2 = ax2.get_legend_handles_labels()
 ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right', frameon=True, facecolor='#FFFFFF', edgecolor='#E2E8F0', fontsize=7.5)
 
 
-fig.savefig('open-pptd-skill/tests/decks/01-analysis-industry-research/assets/bess_cost_curve_and_lithium.png', dpi=200)
+fig.savefig(ASSETS_DIR / 'bess_cost_curve_and_lithium.png', dpi=200)
 plt.close(fig)
 print("Charts generated successfully!")

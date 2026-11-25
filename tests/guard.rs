@@ -5,8 +5,10 @@
 //! `.sync.hash` when this project last legitimately wrote it. Everything
 //! else must refuse with exit code 2 and leave the file untouched.
 
+mod common;
+
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use clap::Parser as _;
 use open_pptd::cli::Cli;
@@ -14,11 +16,8 @@ use open_pptd::hash;
 
 const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/buildable");
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sf-guard-{tag}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+fn temp_dir(tag: &str) -> common::TempDir {
+    common::TempDir::new(&format!("guard-{tag}"))
 }
 
 fn copy_fixture(dest: &Path) {
@@ -248,4 +247,66 @@ fn multiple_outputs_are_tracked_independently() {
     // And tampering with the SECOND one is caught.
     mutate_zip(&b);
     assert_eq!(build(&work, "buildable.pptd", &b), 2);
+}
+
+/// `--force` overrides a stale output, overwrites the file, and re-arms `.sync.hash`.
+#[test]
+fn force_build_overwrites_stale_output_and_rearms_guard() {
+    let work = temp_dir("force");
+    copy_fixture(&work);
+    let out = work.join("out.pptx");
+
+    assert_eq!(build(&work, "buildable.pptd", &out), 0);
+    mutate_zip(&out);
+    assert_eq!(build(&work, "buildable.pptd", &out), 2);
+
+    let forced = run(&[
+        "pptd",
+        "build",
+        &work.join("buildable.pptd").to_string_lossy(),
+        "--output",
+        &out.to_string_lossy(),
+        "--force",
+    ]);
+    assert_eq!(forced, 0, "--force must override external edit");
+    assert_eq!(
+        recorded_hash(&work, &out).as_deref(),
+        Some(hash::sha256_of(&out).unwrap().as_str()),
+        "--force must refresh .sync.hash"
+    );
+    // Subsequent non-force build is now allowed again.
+    assert_eq!(build(&work, "buildable.pptd", &out), 0);
+}
+
+/// Re-running `convert` on an unchanged `.pptx` skips decompilation and keeps
+/// local edits made to `pages/*.page`.
+#[test]
+fn unchanged_convert_preserves_local_page_edits() {
+    let work = temp_dir("convert-skip");
+    copy_fixture(&work);
+    let out = work.join("out.pptx");
+    let pptd = work.join("pptd");
+
+    assert_eq!(build(&work, "buildable.pptd", &out), 0);
+    assert_eq!(convert(&out, &pptd), 0);
+
+    let page_path = fs::read_dir(pptd.join("pages"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| p.extension().and_then(|s| s.to_str()) == Some("page"))
+        .expect("converted page file");
+    let edited = format!(
+        "# local agent edit\n{}",
+        fs::read_to_string(&page_path).unwrap()
+    );
+    fs::write(&page_path, &edited).unwrap();
+
+    // Unchanged source hash -> skip, preserving the local edit.
+    assert_eq!(convert(&out, &pptd), 0);
+    assert_eq!(
+        fs::read_to_string(&page_path).unwrap(),
+        edited,
+        "skipped convert must not clobber local page edits"
+    );
 }

@@ -74,6 +74,9 @@ pub fn resolve_color(theme: Option<&Theme>, color: &Color) -> Result<ResolvedCol
     };
 
     let hex = raw.trim_start_matches('#');
+    if !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(Error::Invalid(format!("invalid color `{raw}`")));
+    }
     match hex.len() {
         6 => Ok(ResolvedColor {
             rgb: hex.to_ascii_uppercase(),
@@ -166,7 +169,7 @@ pub fn build_color_slots(theme: Option<&Theme>) -> ColorSlots {
     for (key, color) in sorted_colors {
         if SEMANTIC_COLOR_KEYS
             .iter()
-            .any(|(k, _)| k == &key.to_ascii_lowercase())
+            .any(|(k, _)| k.eq_ignore_ascii_case(key))
         {
             continue;
         }
@@ -342,6 +345,17 @@ pub fn safe_latin_typeface(name: &str) -> &str {
     let trimmed = name.trim();
     match trimmed {
         "MiSans" | "misans" | "Liter" | "liter" => "Arial",
+        "PingFang SC"
+        | "苹方"
+        | "苹方-简"
+        | "Microsoft YaHei"
+        | "微软雅黑"
+        | "MS YaHei"
+        | "雅黑"
+        | "思源黑体"
+        | "Source Han Sans"
+        | "Source Han Sans SC"
+        | "Noto Sans SC" => "Arial",
         "思源宋体"
         | "Source Han Serif"
         | "Source Han Serif SC"

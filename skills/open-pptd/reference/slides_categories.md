@@ -13,7 +13,7 @@
 4. **Master-level output**: every PPT is a carefully crafted work of art that could be entered into a competition; pay close attention to every detail of layout, typography, and color — details determine success or failure.
 5. **Use image search/generation sensibly**: use image search/generation tools to obtain images and place them in suitable positions. But image abuse is strictly forbidden. If the user's uploaded files contain useful images, use them on suitable pages.
 6. **Defer to the user and the subject**: user-specified templates, brand guidelines, color schemes, fonts, and style references take priority over this guide.
-7. **Source attribution**: pages involving external facts and data must state the source, date or time period, and measurement basis. Cite sources as plain text or clean URL in footnotes (e.g. `Source: McKinsey (2026)` or `https://example.com`). Note: HTML `<a href>` tags are NOT supported by the PPTD compiler and must never be used.
+7. **Source attribution**: pages involving external facts and data must state the source, date or time period, and measurement basis. Cite sources in footnotes as plain text, clean URLs, or clickable `<a href="https://example.com">Source: McKinsey (2026)</a>` hyperlinks (compiled to native OOXML external links).
 
 ### Strictly forbidden
 - **Evidence boundaries**: do not fabricate data, citations, customer cases, experimental results, or sources; when material is missing, clearly mark it as a placeholder, an assumption, or to-be-supplied information.

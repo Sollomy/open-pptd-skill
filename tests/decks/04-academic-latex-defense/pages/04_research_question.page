@@ -131,7 +131,7 @@ elements:
       color: "$fg"
       text: |
         <p><span style="color:#009682; font-weight:bold;">Q1 · 复杂度下界命题 (Lower Bound & Convergence)</span></p>
-        <p style="color:#555555;">在保证全局检索误差有界 \( \epsilon &lt; 10^{-2} \) 的前提下，注意力机制的理论时间复杂度能否由 \( O(N^2) \) 严格降阶至 \( O(N^{1.5}) \)？</p>
+        <p><span style=\"color:#555555;\">在保证全局检索误差有界 \( \epsilon &lt; 10^{-2} \) 的前提下，注意力机制的理论时间复杂度能否由 \( O(N^2) \) 严格降阶至 \( O(N^{1.5}) \)？</span></p>
 
   # RQ 2
   - elementId: rq2-box
@@ -155,7 +155,7 @@ elements:
       color: "$fg"
       text: |
         <p><span style="color:#009682; font-weight:bold;">Q2 · 算法实现命题 (Lightweight Routing Mechanism)</span></p>
-        <p style="color:#555555;">如何设计无须全量点积计算的轻量级降维投影矩阵 \( W_r \in \mathbb{R}^{m \times d_k} \) 与动态聚类质心路由，实现亚微秒级快速候选块召回？</p>
+        <p><span style=\"color:#555555;\">如何设计无须全量点积计算的轻量级降维投影矩阵 \( W_r \in \mathbb{R}^{m \times d_k} \) 与动态聚类质心路由，实现亚微秒级快速候选块召回？</span></p>
 
   # RQ 3
   - elementId: rq3-box
@@ -179,7 +179,7 @@ elements:
       color: "$fg"
       text: |
         <p><span style="color:#009682; font-weight:bold;">Q3 · 极限与退化边界命题 (Boundary Conditions)</span></p>
-        <p style="color:#555555;">当长程多跳关联深度 \( T > 5 \) 时，局部稀疏近似的累积截断误差呈现何种发散规律？在哪些极端场景下动态稀疏将发生精度失效？</p>
+        <p><span style=\"color:#555555;\">当长程多跳关联深度 \( T > 5 \) 时，局部稀疏近似的累积截断误差呈现何种发散规律？在哪些极端场景下动态稀疏将发生精度失效？</span></p>
 
   - elementId: rq-summary
     elementType: text
@@ -206,4 +206,4 @@ elements:
       fontSize: 10
       color: "$gray"
       text: |
-        <p>面向长上下文推理的稀疏注意力机制 · 博士学位论文答辩 <span style="float:right;">§3 科学问题 ｜ 04 / 10</span></p>
+        <p>面向长上下文推理的稀疏注意力机制 · 博士学位论文答辩 · §3 科学问题 ｜ 04 / 10</p>

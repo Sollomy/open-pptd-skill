@@ -144,6 +144,7 @@ class PptxValidator:
                 )
             )
 
+        report.is_valid = report.error_count == 0
         return report
 
     def _check_package_structure(self, z: zipfile.ZipFile, report: ValidationReport) -> None:
@@ -295,21 +296,7 @@ class PptxValidator:
                     for t in tx_body.findall(".//a:t", NAMESPACES):
                         txt = t.text or ""
                         full_text_parts.append(txt)
-
-                        # Leaked HTML tags check
-                        match = LEAKED_TAG_REGEX.search(txt)
-                        if match:
-                            tag = match.group(0)
-                            report.issues.append(
-                                SlideIssue(
-                                    slide_index=slide_idx,
-                                    severity="error",
-                                    category="leaked_tag",
-                                    element_id=sp_name or None,
-                                    message=f"Found leaked/unrendered HTML tag `{tag}` in slide {slide_idx}",
-                                    snippet=txt.strip()[:100],
-                                )
-                            )
+                        self._check_leaked_tag(txt, slide_idx, sp_name, report)
 
                     joined_text = " ".join(t.strip() for t in full_text_parts if t.strip()).strip()
                     if joined_text:
@@ -347,13 +334,38 @@ class PptxValidator:
             for _ in sp_tree.findall(".//p:pic", NAMESPACES):
                 info.images_count += 1
 
-            # Count graphicFrames (tables, charts, media)
+            # Count graphicFrames (tables, charts, media) and scan table/frame text for leaked HTML tags
             for gf in sp_tree.findall(".//p:graphicFrame", NAMESPACES):
                 info.shapes_count += 1
                 if gf.find(".//a:tbl", NAMESPACES) is not None:
                     info.tables_count += 1
+                c_nv_pr = gf.find("p:nvGraphicFramePr/p:cNvPr", NAMESPACES)
+                gf_name = c_nv_pr.attrib.get("name", "") if c_nv_pr is not None else ""
+                for t in gf.findall(".//a:t", NAMESPACES):
+                    self._check_leaked_tag(t.text or "", slide_idx, gf_name, report)
 
         return info
+
+    def _check_leaked_tag(
+        self,
+        txt: str,
+        slide_idx: int,
+        element_name: str,
+        report: ValidationReport,
+    ) -> None:
+        match = LEAKED_TAG_REGEX.search(txt)
+        if match:
+            tag = match.group(0)
+            report.issues.append(
+                SlideIssue(
+                    slide_index=slide_idx,
+                    severity="error",
+                    category="leaked_tag",
+                    element_id=element_name or None,
+                    message=f"Found leaked/unrendered HTML tag `{tag}` in slide {slide_idx}",
+                    snippet=txt.strip()[:100],
+                )
+            )
 
     def _detect_slide_title(self, candidates: list[dict[str, Any]]) -> Optional[str]:
         """Detect slide title properly: prefer shape named for title, else largest-font text.
@@ -424,8 +436,11 @@ class PptxValidator:
                     rel_type = rel.attrib.get("Type", "")
                     if "notesSlide" in rel_type:
                         target = rel.attrib.get("Target", "")
-                        # Target is typically "../notesSlides/notesSlide1.xml"
-                        resolved = os.path.normpath(os.path.join(str(slide_dir), target))
+                        if target.startswith("/"):
+                            resolved = os.path.normpath(target.lstrip("/"))
+                        else:
+                            # Target is typically "../notesSlides/notesSlide1.xml"
+                            resolved = os.path.normpath(os.path.join(str(slide_dir), target))
                         return resolved.replace("\\", "/")
             except Exception:
                 pass
@@ -544,8 +559,8 @@ def build_contact_sheet(image_paths: list[Path], output_path: Path, cols: int = 
         return None
 
     try:
-        first_im = Image.open(image_paths[0])
-        w, h = first_im.size
+        with Image.open(image_paths[0]) as first_im:
+            w, h = first_im.size
         thumb_w = 400
         thumb_h = max(1, int(thumb_w * h / w))
         pad = 20
@@ -560,7 +575,8 @@ def build_contact_sheet(image_paths: list[Path], output_path: Path, cols: int = 
         grid = Image.new("RGB", (total_w, total_h), "#EFECE1")
 
         for idx, img_p in enumerate(image_paths):
-            im = Image.open(img_p).convert("RGB")
+            with Image.open(img_p) as raw_im:
+                im = raw_im.convert("RGB")
             im_resized = im.resize((thumb_w, thumb_h), Image.Resampling.LANCZOS)
             r = idx // actual_cols
             c = idx % actual_cols

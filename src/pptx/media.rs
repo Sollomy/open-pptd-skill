@@ -44,6 +44,9 @@ fn png_size(data: &[u8]) -> Option<ImageSize> {
     if data.len() >= 24 && data[0..8] == SIG && &data[12..16] == b"IHDR" {
         let width = u32::from_be_bytes(data[16..20].try_into().ok()?);
         let height = u32::from_be_bytes(data[20..24].try_into().ok()?);
+        if width == 0 || height == 0 {
+            return None;
+        }
         Some(ImageSize { width, height })
     } else {
         None
@@ -79,6 +82,9 @@ fn jpeg_size(data: &[u8]) -> Option<ImageSize> {
         if is_sof && i + 2 + 5 <= data.len() {
             let height = u16::from_be_bytes([data[i + 3], data[i + 4]]) as u32;
             let width = u16::from_be_bytes([data[i + 5], data[i + 6]]) as u32;
+            if width == 0 || height == 0 {
+                return None;
+            }
             return Some(ImageSize { width, height });
         }
         i += 2 + len.saturating_sub(2);
@@ -123,7 +129,31 @@ impl MediaRegistry {
             return Ok(index);
         }
 
-        let path = self.root_dir.join(src);
+        let rel = Path::new(src);
+        let escapes = rel.is_absolute()
+            || rel.components().any(|c| {
+                matches!(
+                    c,
+                    std::path::Component::ParentDir
+                        | std::path::Component::RootDir
+                        | std::path::Component::Prefix(_)
+                )
+            });
+        if escapes {
+            return Err(Error::Invalid(format!(
+                "media `{src}` must be a project-relative path"
+            )));
+        }
+
+        let path = self.root_dir.join(rel);
+        if let (Ok(root_canon), Ok(path_canon)) = (self.root_dir.canonicalize(), path.canonicalize())
+        {
+            if !path_canon.starts_with(&root_canon) {
+                return Err(Error::Invalid(format!(
+                    "media `{src}` escapes the project directory"
+                )));
+            }
+        }
         let data = std::fs::read(&path).map_err(|source| Error::Io {
             path: path.clone(),
             source,

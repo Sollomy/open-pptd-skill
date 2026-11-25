@@ -33,7 +33,8 @@ A core requirement was distinguishing empirical facts from interpretations and m
 
 ## 2. Toolchain Defect Log & Reproductions
 
-### Defect 1: Panicking XML Tag Mismatch in `curve: smooth`
+### Defect 1: Panicking XML Tag Mismatch in `curve: smooth` *(Resolved in v1.4.2)*
+- **Status**: Resolved in v1.4.2 — `src/pptx/render.rs` now closes `<a:cubicBezTo>` with `</a:cubicBezTo>` (see `tests/decks/README.md` §3 #1).
 - **Component**: Native Rust Compiler (`src/pptx/render.rs`, line 2001)
 - **Severity**: High (generates invalid XML, breaks PPTX compilation/rendering)
 - **Symptom**: Line elements declaring `curve: smooth` fail to parse or cause downstream XML validator crashes.
@@ -64,7 +65,8 @@ A core requirement was distinguishing empirical facts from interpretations and m
 - **Root Cause**: The compiler emits Unicode combining arrow `U+20D7` in the fallback `<a:t>` run. When parsed in text engines without complex text layout hooks, the zero-width combining accent triggers a font fallback missing-glyph box.
 - **Workaround**: Avoid `\vec` in inline text runs; use bold or italic notation.
 
-### Defect 3: LaTeX Math Ignores Element Text Color (Always Emits Black)
+### Defect 3: LaTeX Math Ignores Element Text Color (Always Emits Black) *(Resolved in v1.4.2)*
+- **Status**: Resolved in v1.4.2 — `math::apply_text_color` now emits `<a:solidFill>` on `<m:r>` runs (see `tests/decks/README.md` §3 #8c). PowerPoint and WPS honor it; LibreOffice OMML import still ignores run colors.
 - **Component**: Compiler OMML Math Generator
 - **Severity**: Medium-High (breaks dark-mode scientific decks)
 - **Symptom**: Standalone and inline LaTeX formulas in `<m:oMathPara>` omit `<a:solidFill>` inside `<a:rPr>`, defaulting to document black (`#000000`).
@@ -98,4 +100,4 @@ A core requirement was distinguishing empirical facts from interpretations and m
 ## 3. Usability & Maintenance Recommendations
 1. **Component Templates**: Adding support for reusable components (e.g. `$navRail`, `$formulaCard`) would dramatically cut down repetition across multi-slide decks.
 2. **Auto-Fit for LaTeX Display Math**: Display math in small text boxes should either scale to fit the box or trigger an overflow warning in `pptd check`.
-3. **Color Inheritance for OMML**: The compiler should propagate `textStyle.color` and element `color` into the `<a:rPr>` properties of `<m:oMath>` runs.
+3. **Color Inheritance for OMML** *(Resolved in v1.4.2)*: The compiler now propagates effective text `color` into `<a:rPr><a:solidFill>` on `<m:oMath>` runs (PowerPoint/WPS honor it; LibreOffice OMML import remains a renderer limitation).

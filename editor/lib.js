@@ -3,14 +3,19 @@ export function normalizeRelativePath(value) {
     throw new TypeError("文件路径必须是字符串");
   }
 
-  let path = value.trim().replaceAll("\\", "/");
+  let path = value.trim();
   try {
     path = decodeURIComponent(path);
   } catch {
     // Keep the original path when it contains a literal percent sign.
   }
 
-  path = path.replace(/^file:\/\/+/, "").replace(/^\.\//, "");
+  path = path.replaceAll("\\", "/");
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(path)) {
+    throw new Error(`不允许的绝对路径：${value}`);
+  }
+
+  path = path.replace(/^\.\//, "");
   if (!path || path.includes("\0") || path.startsWith("/") || /^[A-Za-z]:\//.test(path)) {
     throw new Error(`不允许的绝对路径：${value}`);
   }
@@ -75,8 +80,19 @@ export function extractPagePaths(manifestText) {
   }
 
   const lines = manifestText.replaceAll("\r\n", "\n").split("\n");
-  const pageHeader = lines.findIndex((line) => /^(\s*)pages\s*:\s*(?:#.*)?$/.test(line));
+  const pageHeader = lines.findIndex((line) => /^\s*pages\s*:\s*(?:\[[^\]]*\]\s*)?(?:#.*)?$/.test(line));
   if (pageHeader === -1) throw new Error("PPTD manifest 缺少 pages 列表");
+
+  const inlineMatch = lines[pageHeader].match(/^\s*pages\s*:\s*\[([^\]]*)\]\s*(?:#.*)?$/);
+  if (inlineMatch) {
+    const pages = inlineMatch[1]
+      .split(",")
+      .map((item) => unquoteYamlScalar(item))
+      .filter(Boolean)
+      .map((path) => normalizeRelativePath(path));
+    if (pages.length === 0) throw new Error("PPTD manifest 的 pages 列表为空");
+    return pages;
+  }
 
   const headerIndent = lines[pageHeader].match(/^\s*/)[0].length;
   const pages = [];

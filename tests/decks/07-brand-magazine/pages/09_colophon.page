@@ -205,9 +205,9 @@ elements:
       color: "$white"
       lineHeight: 1.6
       text: |
-        <p style="font-size:32px; font-family:'Arial Black'; line-height:1.1;">END OF<br/>VOLUME 01.</p>
+        <p style="line-height:1.1;"><span style="font-size:32px; font-family:Arial Black;">END OF<br/>VOLUME 01.</span></p>
         <p style="margin-top:24px;">时间不是产量的敌人，<br/>而是风味的雕刻刀。</p>
-        <p style="margin-top:16px; font-size:14px; font-weight:normal; line-height:1.6; color:#D8D7D2;">在北纬30度的严寒极境，每一颗慢熟咖啡豆都是大地与耐心共同写就的答卷。</p>
+        <p style="margin-top:16px; line-height:1.6;"><span style="font-size:14px; font-weight:normal; color:#D8D7D2;">在北纬30度的严寒极境，每一颗慢熟咖啡豆都是大地与耐心共同写就的答卷。</span></p>
 
   - elementId: right-blue-seal
     elementType: shape

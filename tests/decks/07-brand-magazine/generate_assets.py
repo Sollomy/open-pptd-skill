@@ -1,12 +1,12 @@
-import os
+from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-asset_dir = "/Users/jim/multica_workspaces_desktop-multica.shiquda.link/dev-b47e50fa6b19/dev-583-f6ebf1094e86/workdir/open-pptd-skill/tests/decks/07-brand-magazine/assets"
-os.makedirs(asset_dir, exist_ok=True)
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
 # 1. cover_texture.jpg: High-contrast monochrome organic texture (macro cellular / grain)
 np.random.seed(30)
@@ -25,7 +25,7 @@ img_cover = Image.fromarray(img_arr, mode='L').convert('RGB')
 grain = np.random.normal(0, 10, (h, w, 3)).astype(np.int16)
 img_cover_arr = np.clip(np.array(img_cover, dtype=np.int16) + grain, 0, 255).astype(np.uint8)
 img_cover = Image.fromarray(img_cover_arr)
-img_cover.save(os.path.join(asset_dir, "cover_texture.jpg"), quality=95)
+img_cover.save(ASSETS_DIR / "cover_texture.jpg", quality=95)
 
 # 2. beans_macro.jpg: High-contrast macro of green/roasted coffee beans
 img_beans = Image.new('RGB', (1000, 1000), color=(247, 245, 239))
@@ -41,7 +41,7 @@ for _ in range(50):
 beans_arr = np.array(img_beans, dtype=np.int16)
 beans_arr += np.random.normal(0, 8, beans_arr.shape).astype(np.int16)
 beans_arr = np.clip(beans_arr, 0, 255).astype(np.uint8)
-Image.fromarray(beans_arr).save(os.path.join(asset_dir, "beans_macro.jpg"), quality=95)
+Image.fromarray(beans_arr).save(ASSETS_DIR / "beans_macro.jpg", quality=95)
 
 # 3. fermentation_tank.jpg: High-contrast industrial stainless steel & valve macro
 img_tank = Image.new('RGB', (1000, 800), color=(18, 18, 20))
@@ -54,7 +54,7 @@ draw_t.ellipse([365, 265, 635, 535], outline=(140, 140, 140), width=2)
 # Klein blue indicator needle
 draw_t.line([(500, 400), (600, 330)], fill=(0, 56, 184), width=8)
 draw_t.ellipse([488, 388, 512, 412], fill=(16, 16, 16))
-img_tank.save(os.path.join(asset_dir, "fermentation_tank.jpg"), quality=95)
+img_tank.save(ASSETS_DIR / "fermentation_tank.jpg", quality=95)
 
 # 4. harvest_landscape.jpg: High-altitude terraced plantation landscape
 img_land = Image.new('RGB', (1280, 720), color=(247, 245, 239))
@@ -68,7 +68,7 @@ for y_base in range(120, 750, 40):
     points.append((0, 720))
     gray = int(25 + (y_base / 750.0) * 175)
     draw_l.polygon(points, fill=(gray, gray, gray), outline=(20, 20, 20))
-img_land.save(os.path.join(asset_dir, "harvest_landscape.jpg"), quality=95)
+img_land.save(ASSETS_DIR / "harvest_landscape.jpg", quality=95)
 
 # 5. altitude_chart.png: Swiss modernist chart for Page 4
 fig, ax1 = plt.subplots(figsize=(7.2, 4.4), dpi=200)
@@ -117,7 +117,7 @@ ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left', frameon=True, f
 
 plt.title('HIGH-ALTITUDE SUCROSE ACCUMULATION VS CUP SCORE', loc='left', fontsize=12, fontweight='heavy', color='#101010', pad=12)
 fig.tight_layout()
-fig.savefig(os.path.join(asset_dir, "altitude_chart.png"), facecolor=fig.get_facecolor(), edgecolor='none')
+fig.savefig(ASSETS_DIR / "altitude_chart.png", facecolor=fig.get_facecolor(), edgecolor='none')
 plt.close(fig)
 
 # 6. roast_profile.png: Thermodynamic roast curve for Page 6
@@ -170,7 +170,7 @@ ax1.legend(l1 + l2, lb1 + lb2, loc='upper left', facecolor='#0A194E', edgecolor=
 
 plt.title('THERMODYNAMIC ROAST PROFILE // 30°N BAOSHAN TYPICA', loc='left', fontsize=11, fontweight='heavy', color='#FFFFFF', pad=12)
 fig.tight_layout()
-fig.savefig(os.path.join(asset_dir, "roast_profile.png"), facecolor=fig.get_facecolor(), edgecolor='none')
+fig.savefig(ASSETS_DIR / "roast_profile.png", facecolor=fig.get_facecolor(), edgecolor='none')
 plt.close(fig)
 
 # 7. sensory_wheel.png: Radar flavor profile for Page 7
@@ -204,7 +204,7 @@ ax.fill(angles, values, color='#0038B8', alpha=0.35)
 
 plt.title('30°N MICRO-LOT SENSORY RADAR (SCA 89.2 PTS)', size=11, fontweight='heavy', color='#101010', y=1.12)
 fig.tight_layout()
-fig.savefig(os.path.join(asset_dir, "sensory_wheel.png"), facecolor=fig.get_facecolor(), edgecolor='none')
+fig.savefig(ASSETS_DIR / "sensory_wheel.png", facecolor=fig.get_facecolor(), edgecolor='none')
 plt.close(fig)
 
 print("All assets successfully created.")

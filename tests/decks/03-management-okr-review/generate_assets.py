@@ -1,7 +1,11 @@
+from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
+
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Set font
 plt.rcParams['font.sans-serif'] = ['PingFang SC', 'Heiti SC', 'Hiragino Sans GB', 'Arial']
@@ -76,7 +80,7 @@ for bar in bars:
              va='center', ha='left', fontsize=8, fontweight='bold', color=INK)
 
 plt.tight_layout()
-plt.savefig('open-pptd-skill/tests/decks/03-management-okr-review/assets/cohort_retention_mix.png', facecolor=BG_COLOR, edgecolor='none')
+plt.savefig(ASSETS_DIR / 'cohort_retention_mix.png', facecolor=BG_COLOR, edgecolor='none')
 plt.close()
 print("Generated cohort_retention_mix.png")
 
@@ -139,6 +143,6 @@ for i in range(len(stages)):
     ax2.text(std_conv[i] + 1.5, x[i] + width/2, f"{std_conv[i]}%", va='center', fontsize=7, color=GRAY_DARK)
 
 plt.tight_layout()
-plt.savefig('open-pptd-skill/tests/decks/03-management-okr-review/assets/cac_payback_and_funnel.png', facecolor=BG_COLOR, edgecolor='none')
+plt.savefig(ASSETS_DIR / 'cac_payback_and_funnel.png', facecolor=BG_COLOR, edgecolor='none')
 plt.close()
 print("Generated cac_payback_and_funnel.png")

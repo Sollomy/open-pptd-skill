@@ -12,10 +12,6 @@ theme:
     ruleColor: "#E2E5E8"
     accentAmber: "#F0A81D"
     accentRed: "#B51E00"
-  fonts:
-    title: "MiSans"
-    body: "MiSans"
-    code: "JetBrains Mono"
   tableStyles:
     booktabs:
       cellStyle:

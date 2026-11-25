@@ -30,21 +30,6 @@ pub enum MathError {
     MacroError(String),
 }
 
-/// Escape text content per XML 1.0 specifications for `<m:t>` nodes.
-fn xml_escape(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            other => out.push(other),
-        }
-    }
-    out
-}
 
 // ---------------------------------------------------------------------------
 // Supported symbols & commands
@@ -272,7 +257,7 @@ fn mathbb(letter: char) -> char {
         'S' => '𝕊',
         'T' => '𝕋',
         'U' => '𝕌',
-        'V' => '𝕎',
+        'V' => '𝕍',
         'W' => '𝕎',
         'X' => '𝕏',
         'Y' => '𝕐',
@@ -322,6 +307,7 @@ fn is_supported_command(cmd: &str) -> bool {
                 | "right"
                 | "begin"
                 | "end"
+                | "cr"
                 | "mathbb"
                 | "mathrm"
                 | "text"
@@ -779,10 +765,15 @@ impl<'a> Parser<'a> {
             "#" => Ok(MathNode::Text("#".into())),
             "$" => Ok(MathNode::Text("$".into())),
             "\\" => Ok(MathNode::Text("\n".into())),
+            "|" => Ok(MathNode::Text("‖".into())),
             "vert" => Ok(MathNode::Text("|".into())),
             "Vert" => Ok(MathNode::Text("‖".into())),
             "langle" => Ok(MathNode::Text("⟨".into())),
             "rangle" => Ok(MathNode::Text("⟩".into())),
+            "lfloor" => Ok(MathNode::Text("⌊".into())),
+            "rfloor" => Ok(MathNode::Text("⌋".into())),
+            "lceil" => Ok(MathNode::Text("⌈".into())),
+            "rceil" => Ok(MathNode::Text("⌉".into())),
             _ => Err(MathError::UnsupportedCommand(format!("\\{name}"))),
         }
     }
@@ -810,6 +801,9 @@ impl<'a> Parser<'a> {
             } else if self.pos < self.chars.len() {
                 let single = self.chars[self.pos];
                 self.pos += 1;
+                if single == '|' {
+                    return Ok("‖".to_string());
+                }
                 let s = single.to_string();
                 delimiter_chr(&s)
                     .map(str::to_string)
@@ -1045,7 +1039,7 @@ fn emit_run(out: &mut String, text: &str, upright: bool) {
     }
     out.push_str("<a:rPr lang=\"en-US\"><a:latin typeface=\"Cambria Math\"/></a:rPr>");
     out.push_str("<m:t>");
-    out.push_str(&xml_escape(text));
+    out.push_str(&super::xml::escape(text));
     out.push_str("</m:t></m:r>");
 }
 
@@ -1154,8 +1148,8 @@ fn emit_nodes(out: &mut String, nodes: &[MathNode]) {
                     }
                     MathNode::Delimited { beg, end, body } => {
                         out.push_str("<m:d><m:dPr>");
-                        let _ = write!(out, "<m:begChr m:val=\"{}\"/>", xml_escape(beg));
-                        let _ = write!(out, "<m:endChr m:val=\"{}\"/>", xml_escape(end));
+                        let _ = write!(out, "<m:begChr m:val=\"{}\"/>", super::xml::escape(beg));
+                        let _ = write!(out, "<m:endChr m:val=\"{}\"/>", super::xml::escape(end));
                         out.push_str("</m:dPr><m:e>");
                         emit_nodes(out, body);
                         out.push_str("</m:e></m:d>");
@@ -1170,20 +1164,38 @@ fn emit_nodes(out: &mut String, nodes: &[MathNode]) {
                         // `\lim` is a function name, not an operator: ST_Char only
                         // accepts a single character, so `<m:chr m:val="lim"/>` is
                         // invalid OMML and renderers show a replacement glyph.
-                        if chr == "lim" && sup.is_none() {
-                            out.push_str("<m:func><m:funcPr/><m:fName><m:limLow><m:e>");
-                            emit_run(out, "lim", true);
-                            out.push_str("</m:e><m:lim>");
-                            if let Some(s) = sub {
+                        if chr == "lim" {
+                            out.push_str("<m:func><m:funcPr/><m:fName>");
+                            if let Some(u) = sup {
+                                out.push_str("<m:sSup><m:e>");
+                                if let Some(s) = sub {
+                                    out.push_str("<m:limLow><m:e>");
+                                    emit_run(out, "lim", true);
+                                    out.push_str("</m:e><m:lim>");
+                                    emit_nodes(out, s);
+                                    out.push_str("</m:lim></m:limLow>");
+                                } else {
+                                    emit_run(out, "lim", true);
+                                }
+                                out.push_str("</m:e><m:sup>");
+                                emit_nodes(out, u);
+                                out.push_str("</m:sup></m:sSup>");
+                            } else if let Some(s) = sub {
+                                out.push_str("<m:limLow><m:e>");
+                                emit_run(out, "lim", true);
+                                out.push_str("</m:e><m:lim>");
                                 emit_nodes(out, s);
+                                out.push_str("</m:lim></m:limLow>");
+                            } else {
+                                emit_run(out, "lim", true);
                             }
-                            out.push_str("</m:lim></m:limLow></m:fName><m:e>");
+                            out.push_str("</m:fName><m:e>");
                             emit_nodes(out, body);
                             out.push_str("</m:e></m:func>");
                             continue;
                         }
                         out.push_str("<m:nary><m:naryPr>");
-                        let _ = write!(out, "<m:chr m:val=\"{}\"/>", xml_escape(chr));
+                        let _ = write!(out, "<m:chr m:val=\"{}\"/>", super::xml::escape(chr));
                         let _ = write!(out, "<m:limLoc m:val=\"{lim_loc}\"/>");
                         if sub.is_none() {
                             out.push_str("<m:subHide m:val=\"1\"/>");
@@ -1236,7 +1248,7 @@ fn emit_nodes(out: &mut String, nodes: &[MathNode]) {
                     }
                     MathNode::Accent { chr, body } => {
                         out.push_str("<m:acc><m:accPr>");
-                        let _ = write!(out, "<m:chr m:val=\"{}\"/>", xml_escape(chr));
+                        let _ = write!(out, "<m:chr m:val=\"{}\"/>", super::xml::escape(chr));
                         out.push_str("</m:accPr><m:e>");
                         emit_nodes(out, body);
                         out.push_str("</m:e></m:acc>");
@@ -1862,6 +1874,43 @@ fn decompile_element(out: &mut String, el: &XmlEl) {
             }
             out.push('}');
         }
+        "func" => {
+            if let Some(fname) = first_child(el, "fName") {
+                decompile_children(out, &fname.children);
+            }
+            if let Some(e) = first_child(el, "e").filter(|e| !e.children.is_empty()) {
+                if !out.ends_with(' ') {
+                    out.push(' ');
+                }
+                decompile_children(out, &e.children);
+            }
+        }
+        "limLow" => {
+            if let Some(e) = first_child(el, "e") {
+                decompile_children(out, &e.children);
+            }
+            while out.ends_with(' ') {
+                out.pop();
+            }
+            if let Some(lim) = first_child(el, "lim").filter(|l| !l.children.is_empty()) {
+                out.push_str("_{");
+                decompile_children(out, &lim.children);
+                out.push('}');
+            }
+        }
+        "limUpp" => {
+            if let Some(e) = first_child(el, "e") {
+                decompile_children(out, &e.children);
+            }
+            while out.ends_with(' ') {
+                out.pop();
+            }
+            if let Some(lim) = first_child(el, "lim").filter(|l| !l.children.is_empty()) {
+                out.push_str("^{");
+                decompile_children(out, &lim.children);
+                out.push('}');
+            }
+        }
         "r" => {
             let is_upright = first_child(el, "rPr")
                 .and_then(|p| first_child(p, "sty"))
@@ -1874,7 +1923,9 @@ fn decompile_element(out: &mut String, el: &XmlEl) {
                 .unwrap_or_default();
 
             if is_upright {
-                if is_upright_func(&t) {
+                if t == "lim" {
+                    out.push_str("\\lim");
+                } else if is_upright_func(&t) {
                     let _ = write!(out, "\\{t} ");
                 } else {
                     let _ = write!(out, "\\text{{{t}}}");

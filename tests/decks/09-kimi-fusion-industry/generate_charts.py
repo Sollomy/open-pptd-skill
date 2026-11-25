@@ -1,5 +1,11 @@
+from pathlib import Path
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
+
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
 plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'DejaVu Sans']
 plt.rcParams['axes.edgecolor'] = '#94A3B8'
@@ -78,7 +84,7 @@ fig.text(0.18, 0.02, 'Source: Nuclear Fusion database (IAEA), EUROfusion JET rec
          fontsize=6.2, color='#64748B', style='italic')
 
 plt.subplots_adjust(left=0.18, right=0.96, top=0.95, bottom=0.15)
-plt.savefig('open-pptd-skill/tests/decks/09-kimi-fusion-industry/assets/chart_triple_product.png', dpi=300)
+plt.savefig(ASSETS_DIR / 'chart_triple_product.png', dpi=300)
 plt.close()
 
 # -------------------------------------------------------------------------
@@ -132,7 +138,7 @@ fig.text(0.18, 0.02, 'Source: Fusion Industry Association (FIA) Reports (2021–
          fontsize=5.8, color='#64748B', style='italic')
 
 plt.subplots_adjust(left=0.18, right=0.92, top=0.90, bottom=0.16, wspace=0.48)
-plt.savefig('open-pptd-skill/tests/decks/09-kimi-fusion-industry/assets/chart_fusion_investment.png', dpi=300)
+plt.savefig(ASSETS_DIR / 'chart_fusion_investment.png', dpi=300)
 plt.close()
 
 # -------------------------------------------------------------------------
@@ -189,7 +195,7 @@ fig.text(0.18, 0.02, 'Source: Sheffield et al. (Fusion Tech.) & ARPA-E ALPHA/BET
          fontsize=5.8, color='#64748B', style='italic')
 
 plt.subplots_adjust(left=0.18, right=0.94, top=0.95, bottom=0.15)
-plt.savefig('open-pptd-skill/tests/decks/09-kimi-fusion-industry/assets/chart_fusion_lcoe.png', dpi=300)
+plt.savefig(ASSETS_DIR / 'chart_fusion_lcoe.png', dpi=300)
 plt.close()
 
 print("All charts updated with perfect padding!")

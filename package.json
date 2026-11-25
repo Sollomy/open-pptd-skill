@@ -32,6 +32,7 @@
   },
   "files": [
     "bin/",
+    "editor/",
     "lib/",
     "skills/open-pptd/SKILL.md",
     "skills/open-pptd/reference/",

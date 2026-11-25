@@ -42,9 +42,9 @@ For property values that conflict, the first source with a value is found by sea
 | Property | Default value |
 |---|---|
 | color | `#000000` |
-| backgroundColor | Not applied |
+| backgroundColor | Not applied *(parsed in AST; not yet emitted to OOXML)* |
 | fontSize | `18` |
-| fontFamily | `"MiSans"` |
+| fontFamily | `{ latin: "Arial", ea: "Microsoft YaHei" }` |
 | bold | `false` |
 | italic | `false` |
 | lineHeight | `1` |
@@ -52,7 +52,7 @@ For property values that conflict, the first source with a value is found by sea
 | spaceAfter | `0` |
 | letterSpacing | `0` |
 | marginTop | `0` |
-| autofit | Not applied — no `a:bodyPr` autofit child is written, which OOXML reads as "do not autofit". Set `shrink`/`fit_shape`/`fixed` only when the deck really needs that behaviour. |
+| autofit | Not applied — no `a:bodyPr` autofit child is written, which OOXML reads as "do not autofit". Set `fit_text`/`fit_shape`/`fixed` only when the deck really needs that behaviour. |
 
 #### 2. Table Cell Styles
 
@@ -73,9 +73,9 @@ For property values that conflict, the first source with a value is found by sea
 | Property | Default value |
 |---|---|
 | color | `#000000` |
-| backgroundColor | Not applied |
-| fontSize | Auto-adapts based on cell height |
-| fontFamily | `"MiSans"` |
+| backgroundColor | Not applied *(parsed in AST; not yet emitted to OOXML)* |
+| fontSize | `18` |
+| fontFamily | `{ latin: "Arial", ea: "Microsoft YaHei" }` |
 | bold | `false` |
 | italic | `false` |
 | lineHeight | `1` |
@@ -85,7 +85,7 @@ For property values that conflict, the first source with a value is found by sea
 | margin | `{left: 7.2, right: 7.2, top: 3.6, bottom: 3.6}` (pt, per side) |
 | autofit | Not applied — no `a:bodyPr` autofit child is written, which OOXML reads as "do not autofit" |
 | fill | Not applied (transparent) |
-| border | `{style: solid, width: 1, color: "#000000"}` |
+| border | Not applied (omitted; no `<a:ln*>` emitted) |
 | align | `["center", "middle"]` |
 
 #### 3. Chart Styles (Unsupported)
@@ -162,7 +162,7 @@ project/
 3. **Media does not support remote URLs yet**: the format documents `https://...` for `Image.src` and the [ImageFill](#fill).src of `background` / `fill`, but the compiler resolves `src` as a local path only (`failed to read https://...: No such file or directory`) while `check` skips the existence test. Download the asset into `assets/` first.
 4. **Supported asset extensions**: raster images `.png` / `.jpg` / `.jpeg` / `.gif` (GIFs are carried byte-for-byte into the package as `image/gif`, so animated GIFs keep their frames; PowerPoint shows the first frame while editing); audio/video clips `.mp4` / `.m4v` / `.mov` / `.mp3` / `.m4a` / `.wav` / `.wma`. Other extensions are rejected by `build` with an `unsupported extension` error.
 
-**Main entry is required:** everything must be loaded through the `.pptd` main entry file; a `.page` cannot be passed alone to the `convert`/`check` commands
+**Main entry is required:** everything must be loaded through the `.pptd` main entry file; a `.page` cannot be passed alone to the `build`/`check` commands
 
 ---
 
@@ -241,7 +241,7 @@ type BorderSpec = null
 >       border: [{width: 0}, {width: 0}, {width: 0}, {width: 0}]
 > ```
 >
-> To keep only the bottom edge: `border: [{width: 0}, {width: 0}, null, {style: solid, width: 1, color: "#1F2937"}]`.
+> To keep only the bottom edge: `border: [{width: 0}, {width: 0}, {style: solid, width: 1, color: "#1F2937"}, {width: 0}]`.
 
 ### Shadow
 
@@ -304,16 +304,16 @@ interface GradientFill {
 
 interface ImageFill {
   type: "image";
-  src: string;                       // URL or relative path
-  fit?: ImageFit;                    // default: {mode: "cover"}
-  crop?: ImageCrop;                  // always applied; see the rendering order with fit below
-  opacity?: number;                  // default: 1; constraint: [0, 1]
+  src: string;                       // local relative path
+  fit?: ImageFit;                    // parsed in AST; currently ignored on slide background (emitted as stretch)
+  crop?: ImageCrop;                  // parsed in AST; currently ignored on slide background
+  opacity?: number;                  // parsed in AST; currently ignored on slide background
 }
 ```
 
 > `GradientFill.angle` takes values in `[0, 360)`; `0` means left to right, increasing clockwise. Examples: `90` = top→bottom, `180` = right→left.
 
-> **ImageFill rendering order:** `crop` (adjust the source rectangle proportionally: positive values crop inward, negative values expand outward and pad with transparent pixels) → `fit` (adapt to the fill container per mode). The specific semantics of each `fit.mode` value are consistent with the "rendering logic" discussion in the [Image](#image-image) section.
+> **ImageFill compiler support:** `ImageFill` is only supported on `Page.background` (rejected on shapes and table cells). On slide backgrounds the compiler currently emits `<a:blipFill><a:blip .../><a:stretch/></a:blipFill>`, so `fit`, `crop`, and `opacity` on `ImageFill` are parsed in the AST but not yet rendered.
 
 **Examples:**
 

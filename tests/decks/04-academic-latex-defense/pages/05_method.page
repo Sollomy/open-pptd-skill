@@ -145,7 +145,7 @@ elements:
       color: "$fg"
       text: |
         <p><span style="color:#009682; font-weight:bold;">阶段 1 · 离线/Prefill 质心预聚合</span></p>
-        <p style="color:#555555;">利用 GPU 共享内存并行归约，将 KV Cache 划分为 \( B \) 个连续块并生成低维质心矩阵 \( \bar{K} \in \mathbb{R}^{B \times m} \)。</p>
+        <p><span style=\"color:#555555;\">利用 GPU 共享内存并行归约，将 KV Cache 划分为 \( B \) 个连续块并生成低维质心矩阵 \( \bar{K} \in \mathbb{R}^{B \times m} \)。</span></p>
 
   # Stage 2
   - elementId: st2-box
@@ -169,7 +169,7 @@ elements:
       color: "$fg"
       text: |
         <p><span style="color:#009682; font-weight:bold;">阶段 2 · 实时轻量查询投影与 Top-K 路由</span></p>
-        <p style="color:#555555;">单 Token 解码时实时执行 \( z_i = W_r q_i \)，并在寄存器内执行 \( B \) 维快速点积排序，生成稀疏路由索引 \( \hat{S}_i \)。</p>
+        <p><span style=\"color:#555555;\">单 Token 解码时实时执行 \( z_i = W_r q_i \)，并在寄存器内执行 \( B \) 维快速点积排序，生成稀疏路由索引 \( \hat{S}_i \)。</span></p>
 
   # Stage 3
   - elementId: st3-box
@@ -193,7 +193,7 @@ elements:
       color: "$fg"
       text: |
         <p><span style="color:#009682; font-weight:bold;">阶段 3 · Triton 稀疏张量聚集运算 (Gather-Attn)</span></p>
-        <p style="color:#555555;">定制 Triton 融合 Kernel：根据路由索引 \( \hat{S}_i \) 直接加载目标 KV 块，避免全局非连续显存搬运与带宽浪费。</p>
+        <p><span style=\"color:#555555;\">定制 Triton 融合 Kernel：根据路由索引 \( \hat{S}_i \) 直接加载目标 KV 块，避免全局非连续显存搬运与带宽浪费。</span></p>
 
   - elementId: method-highlight
     elementType: text
@@ -220,4 +220,4 @@ elements:
       fontSize: 10
       color: "$gray"
       text: |
-        <p>面向长上下文推理的稀疏注意力机制 · 博士学位论文答辩 <span style="float:right;">§4 核心方法 ｜ 05 / 10</span></p>
+        <p>面向长上下文推理的稀疏注意力机制 · 博士学位论文答辩 · §4 核心方法 ｜ 05 / 10</p>

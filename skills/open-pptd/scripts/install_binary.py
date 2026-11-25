@@ -132,9 +132,14 @@ def probe_binary_version(bin_path: Path) -> Optional[str]:
     return None
 
 
+def is_native_pptd_version(v_out: Optional[str]) -> bool:
+    """Return True if `--version` output identifies the native Rust compiler (not npm's bare version)."""
+    return bool(v_out and v_out.strip().lower().startswith(("pptd ", "open-pptd ", "slideforge ")))
+
+
 def find_pptd(min_version: Optional[str] = None) -> Optional[Path]:
-    """Find existing pptd executable in PATH or standard user directories that meets min_version."""
-    names = ["pptd", "open-pptd", "slideforge"]
+    """Find existing native pptd executable in PATH or standard user directories."""
+    names = ["pptd", "slideforge"]
     candidates = []
 
     for bin_name in names:
@@ -164,19 +169,21 @@ def find_pptd(min_version: Optional[str] = None) -> Optional[Path]:
                 Path.cwd() / "target" / "release" / f"{name}.exe",
             ])
 
+    seen: set[Path] = set()
     for c in candidates:
         if c.is_file() and (platform.system().lower() == "windows" or os.access(c, os.X_OK)):
             p = c.resolve()
-            if min_version:
-                v_out = probe_binary_version(p)
-                if not v_out or is_version_outdated(v_out, min_version):
-                    continue
+            if p in seen:
+                continue
+            seen.add(p)
+            v_out = probe_binary_version(p)
+            if not is_native_pptd_version(v_out):
+                continue
+            if min_version and is_version_outdated(v_out or "", min_version):
+                continue
             return p
 
     return None
-
-
-find_slideforge = find_pptd
 
 def fetch_checksums(version: str) -> dict[str, str]:
     """Fetch SHA256SUMS.txt from candidate GitHub releases; empty when unavailable."""
@@ -289,16 +296,22 @@ def install_from_release(dest_dir: Path, version: str = VERSION) -> Path:
 
     dest_path.chmod(dest_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
-    # Create open-pptd symlink/copy if needed
+    # Create or refresh open-pptd symlink/copy
     open_pptd_bin = dest_dir / ("open-pptd.exe" if is_win else "open-pptd")
-    if not open_pptd_bin.exists():
-        try:
-            open_pptd_bin.symlink_to(dest_path.name)
-        except Exception:
+    if not open_pptd_bin.is_symlink():
+        if open_pptd_bin.exists():
             try:
                 shutil.copy2(dest_path, open_pptd_bin)
             except Exception:
                 pass
+        else:
+            try:
+                open_pptd_bin.symlink_to(dest_path.name)
+            except Exception:
+                try:
+                    shutil.copy2(dest_path, open_pptd_bin)
+                except Exception:
+                    pass
     print(f"[open-pptd] Installed pptd v{version} from {chosen_archive} (SHA256 {actual_sha}) to: {dest_path}")
     return dest_path
 
@@ -325,14 +338,19 @@ def install_from_cargo(dest_dir: Path, version: str = VERSION) -> Path:
     print(f"[open-pptd] Running: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
 
-    bin_name = "pptd.exe" if platform.system().lower() == "windows" else "pptd"
-    installed = (install_root / "bin" / bin_name) if dest_dir.name == "bin" else (dest_dir / bin_name)
-    if not installed.is_file():
-        # Fallback check
-        installed = (install_root / "bin" / "open-pptd") if dest_dir.name == "bin" else (dest_dir / "open-pptd")
+    is_win = platform.system().lower() == "windows"
+    bin_name = "pptd.exe" if is_win else "pptd"
+    # cargo install --root <root> always places binaries under <root>/bin/
+    built = install_root / "bin" / bin_name
+    if not built.is_file():
+        built = install_root / "bin" / ("open-pptd.exe" if is_win else "open-pptd")
 
-    if not installed.is_file():
-        raise RuntimeError(f"Cargo build finished but binary not found at {installed}")
+    if not built.is_file():
+        raise RuntimeError(f"Cargo build finished but binary not found at {install_root / 'bin' / bin_name}")
+
+    installed = dest_dir / bin_name
+    if built.resolve() != installed.resolve():
+        built.replace(installed)
 
     installed.chmod(installed.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     print(f"[open-pptd] Successfully built and installed pptd via cargo: {installed}")
@@ -361,7 +379,7 @@ def ensure_pptd(force_reinstall: bool = False, install_dir: Optional[Path] = Non
             target_bin = install_dir / bin_name
             if target_bin.is_file() and (platform.system().lower() == "windows" or os.access(target_bin, os.X_OK)):
                 v_out = probe_binary_version(target_bin)
-                if v_out and not is_version_outdated(v_out, version):
+                if is_native_pptd_version(v_out) and not is_version_outdated(v_out or "", version):
                     return target_bin.resolve()
         else:
             existing = find_pptd(min_version=version)
@@ -376,7 +394,7 @@ def ensure_pptd(force_reinstall: bool = False, install_dir: Optional[Path] = Non
     try:
         installed = install_from_release(install_dir, version=version)
         v_out = probe_binary_version(installed)
-        if not v_out or is_version_outdated(v_out, version):
+        if not is_native_pptd_version(v_out) or is_version_outdated(v_out or "", version):
             raise RuntimeError(f"Installed binary reported '{v_out}', expected version {version}")
         return installed
     except Exception as e:
@@ -387,7 +405,7 @@ def ensure_pptd(force_reinstall: bool = False, install_dir: Optional[Path] = Non
     try:
         installed = install_from_cargo(install_dir, version=version)
         v_out = probe_binary_version(installed)
-        if not v_out or is_version_outdated(v_out, version):
+        if not is_native_pptd_version(v_out) or is_version_outdated(v_out or "", version):
             raise RuntimeError(f"Cargo compiled binary reported '{v_out}', expected version {version}")
         return installed
     except Exception as e:
@@ -399,9 +417,6 @@ def ensure_pptd(force_reinstall: bool = False, install_dir: Optional[Path] = Non
     raise RuntimeError(
         "Could not automatically install pptd:\n  - " + "\n  - ".join(errors)
     )
-
-
-ensure_slideforge = ensure_pptd
 
 
 def main() -> int:
@@ -428,7 +443,7 @@ def main() -> int:
     try:
         bin_path = ensure_pptd(force_reinstall=args.force, install_dir=args.dir, version=args.version)
         version_str = probe_binary_version(bin_path) or "unknown"
-        if is_version_outdated(version_str, args.version):
+        if not is_native_pptd_version(version_str) or is_version_outdated(version_str, args.version):
             print(
                 f"[open-pptd] Error: Resolved binary at {bin_path} reports '{version_str}', which is older than target version {args.version}",
                 file=sys.stderr,

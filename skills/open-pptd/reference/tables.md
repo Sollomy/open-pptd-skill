@@ -14,7 +14,7 @@ A table is an element on a page with `elementType: table`:
 - elementId: comparison-tbl
   elementType: table
   bounds: [56, 170, 848, 230]       # [x, y, width, height]
-  columnWidths: [0.18, 0.26, 0.26, 0.30] # Proportions or EMU normalized
+  columnWidths: [0.18, 0.26, 0.26, 0.30] # Fractions in (0, 1] summing to 1.0
   rowHeights: [0.18, 0.20, 0.20, 0.20, 0.22]
   style: "$tblStyle"               # Optional theme reference
   rows:

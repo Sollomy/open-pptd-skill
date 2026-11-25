@@ -19,6 +19,7 @@ pub const SUPPORTED_VERSION: &str = "v2";
 pub fn load_project(entry: &Path) -> Result<Project> {
     let root_dir = entry
         .parent()
+        .filter(|p| !p.as_os_str().is_empty())
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
 

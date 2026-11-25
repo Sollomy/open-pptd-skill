@@ -144,4 +144,4 @@ elements:
       fontSize: 10
       color: "$gray"
       text: |
-        <p>面向长上下文推理的稀疏注意力机制 · 博士学位论文答辩 <span style="float:right;">§1 背景与动机 ｜ 02 / 10</span></p>
+        <p>面向长上下文推理的稀疏注意力机制 · 博士学位论文答辩 · §1 背景与动机 ｜ 02 / 10</p>

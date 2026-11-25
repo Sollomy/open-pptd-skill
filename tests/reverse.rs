@@ -4,6 +4,8 @@
 //! fixture deck, reverse it back into PPTD, then rebuild again. Geometry must
 //! be preserved to the EMU and every element class must survive.
 
+mod common;
+
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
@@ -15,20 +17,16 @@ fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/buildable")
 }
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("slideforge-roundtrip-{tag}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+fn temp_dir(tag: &str) -> common::TempDir {
+    common::TempDir::new(&format!("roundtrip-{tag}"))
 }
 
 #[test]
 fn buildable_fixture_roundtrips() {
     let work = temp_dir("fixture");
     let first_pptx = work.join("first.pptx");
-    let project = pptd::load_project(&fixture_dir().join("buildable.pptd")).unwrap();
-    pptx::writer::PptxWriter::new(&project)
+    let orig = pptd::load_project(&fixture_dir().join("buildable.pptd")).unwrap();
+    pptx::writer::PptxWriter::new(&orig)
         .build(&first_pptx)
         .unwrap();
 
@@ -42,13 +40,48 @@ fn buildable_fixture_roundtrips() {
     );
     assert_eq!(report.page_count, 1, "buildable fixture has one page");
 
-    // Every element index must survive the reverse.
+    // Every element, type, and bounding box must survive the reverse.
     let project = pptd::load_project(&converted.join("deck.pptd")).unwrap();
     assert_eq!(project.presentation.pages.len(), 1);
+    let orig_elems = &orig.pages[0].elements;
+    let conv_elems = &project.pages[0].elements;
+    assert_eq!(
+        conv_elems.len(),
+        orig_elems.len(),
+        "expected {} elements, got {}",
+        orig_elems.len(),
+        conv_elems.len()
+    );
+    assert_eq!(orig_elems.len(), 6, "buildable fixture has 6 elements");
+    for (o, c) in orig_elems.iter().zip(conv_elems.iter()) {
+        assert_eq!(c.type_name(), o.type_name(), "element type drifted");
+        let ob = &o.common().bounds;
+        let cb = &c.common().bounds;
+        if o.type_name() == "line" {
+            // `divider` has viewBox [560, 40] with horizontal points "0,20 560,20",
+            // so the emitted cxnSp sits at y = 360 + 20 = 380 with height 0.
+            assert!(
+                (cb.x - ob.x).abs() < 0.05
+                    && (cb.y - (ob.y + 20.0)).abs() < 0.05
+                    && (cb.width - ob.width).abs() < 0.05
+                    && cb.height.abs() < 0.05,
+                "line bounds drifted for {}: orig={ob:?} conv={cb:?}",
+                o.common().element_id
+            );
+        } else {
+            assert!(
+                (ob.x - cb.x).abs() < 0.05
+                    && (ob.y - cb.y).abs() < 0.05
+                    && (ob.width - cb.width).abs() < 0.05
+                    && (ob.height - cb.height).abs() < 0.05,
+                "bounds drifted for {}: orig={ob:?} conv={cb:?}",
+                o.common().element_id
+            );
+        }
+    }
 
     // Rebuild from the converted PPTD; must open and re-parse.
     let second_pptx = work.join("second.pptx");
-    let project = pptd::load_project(&converted.join("deck.pptd")).unwrap();
     pptx::writer::PptxWriter::new(&project)
         .build(&second_pptx)
         .unwrap();
@@ -61,8 +94,15 @@ fn buildable_fixture_roundtrips() {
             .filter(|n| n.starts_with("ppt/slides/slide") && n.ends_with(".xml"))
             .count()
     };
+    let media_of = |zip: &zip::ZipArchive<fs::File>| -> usize {
+        zip.file_names()
+            .filter(|n| n.starts_with("ppt/media/"))
+            .count()
+    };
     assert_eq!(slides_of(&first), slides_of(&second));
     assert_eq!(slides_of(&second), 1);
+    assert_eq!(media_of(&first), 1);
+    assert_eq!(media_of(&second), 1);
 }
 
 #[test]
@@ -158,7 +198,6 @@ fn table_fixture_roundtrips_through_convert() {
     pptx::writer::PptxWriter::new(&project)
         .build(&second)
         .expect("converted project must rebuild");
-    let _ = fs::remove_dir_all(&work);
 }
 #[test]
 fn reverse_preserves_speaker_notes() {
@@ -181,7 +220,6 @@ fn reverse_preserves_speaker_notes() {
         Some("Here are the speaker rehearsal notes for slide 1.")
     );
 
-    let _ = fs::remove_dir_all(&work);
 }
 
 #[test]
@@ -229,24 +267,14 @@ fn math_formulas_roundtrip_through_convert() {
         .build(&rebuild_pptx)
         .expect("converted math project must rebuild");
 
-    let _ = fs::remove_dir_all(&work);
 }
 
 fn read_part(path: &std::path::Path, name: &str) -> String {
-    let mut zip = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
-    let mut data = String::new();
-    zip.by_name(name)
-        .unwrap()
-        .read_to_string(&mut data)
-        .unwrap();
-    data
+    common::read_zip_part(path, name)
 }
 
 fn read_part_bytes(path: &std::path::Path, name: &str) -> Vec<u8> {
-    let mut zip = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
-    let mut data = Vec::new();
-    zip.by_name(name).unwrap().read_to_end(&mut data).unwrap();
-    data
+    common::read_zip_bytes(path, name)
 }
 
 /// Rewrite parts of an existing package and append new ones, keeping every
@@ -504,7 +532,6 @@ fn chart_parts_roundtrip_through_convert() {
         "chart must neither vanish nor duplicate"
     );
 
-    let _ = fs::remove_dir_all(&work);
 }
 
 /// Cell insets (`a:tcPr@marL/marR/marT/marB`) and per-cell autofit must
@@ -619,7 +646,6 @@ elements:
     assert!(second_xml.contains(r#"marB="27940""#), "{second_xml}");
     assert_eq!(second_xml.matches("<a:spAutoFit/>").count(), 2);
 
-    let _ = fs::remove_dir_all(&work);
 }
 
 /// GIF pictures survive `build → convert → build`: the bytes are copied
@@ -683,7 +709,6 @@ fn gif_images_roundtrip_through_convert() {
         .unwrap();
     assert_eq!(read_part_bytes(&second, "ppt/media/image1.gif"), gif_bytes);
 
-    let _ = fs::remove_dir_all(&work);
 }
 
 #[test]
@@ -782,7 +807,6 @@ fn richtext_baseline_roundtrips_exactly() {
         "{second_xml}"
     );
 
-    let _ = fs::remove_dir_all(&work);
 }
 
 #[test]
@@ -861,7 +885,6 @@ fn whitespace_only_runs_roundtrip_through_convert_and_build() {
         "rebuilt run must keep both edge spaces: {second_xml}"
     );
 
-    let _ = fs::remove_dir_all(&work);
 }
 
 #[test]
@@ -986,7 +1009,6 @@ fn space_after_roundtrips_in_boxes_and_cells() {
         "{second_xml}"
     );
 
-    let _ = fs::remove_dir_all(&work);
 }
 
 #[test]
@@ -1070,7 +1092,6 @@ fn math_fallback_and_rich_baseline_stay_separate() {
         "round-trip must not duplicate or drop either shift: {second_xml}"
     );
 
-    let _ = fs::remove_dir_all(&work);
 }
 
 /// Converting a built fixture deck must report no losses at all. This is
@@ -1080,9 +1101,9 @@ fn math_fallback_and_rich_baseline_stay_separate() {
 fn fixture_decks_convert_without_losses() {
     let work = temp_dir("loss-clean");
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
-    // `chart` and `demo` use the declarative chart form that `build` rejects;
-    // native chart parts are exercised by `chart_parts_roundtrip_verbatim`.
-    for name in ["buildable", "tables", "gif"] {
+    // `demo` uses the declarative chart form that `build` rejects;
+    // `chart` uses native chart parts and must also convert with zero losses.
+    for name in ["buildable", "tables", "gif", "chart"] {
         let dir = root.join(name);
         let entry = dir.join(format!("{name}.pptd"));
         let project = pptd::load_project(&entry).unwrap();
@@ -1099,7 +1120,6 @@ fn fixture_decks_convert_without_losses() {
             report.losses
         );
     }
-    let _ = fs::remove_dir_all(&work);
 }
 
 /// Every loss category that an arbitrary deck can trigger must appear in the
@@ -1241,6 +1261,318 @@ fn loss_report_catches_dropped_mappings() {
     ])
     .run();
     assert_eq!(code, 2, "losses must fail the conversion");
-
-    let _ = fs::remove_dir_all(&work);
 }
+
+#[test]
+fn table_row_span_roundtrips_through_convert() {
+    let (work, entry) = common::write_deck(
+        "row-span",
+        "version: v2\nsize: [960, 540]\npages: [pages/p.page]\n",
+        &[(
+            "p.page",
+            r#"elements:
+  - elementId: tbl
+    elementType: table
+    bounds: [80, 80, 500, 240]
+    columnWidths: [0.4, 0.6]
+    rowHeights: [0.3, 0.35, 0.35]
+    rows:
+      - - text: Header A
+        - text: Header B
+      - - text: Merged Vertical
+          rowSpan: 2
+        - text: Row 2 Right
+      - - text: Row 3 Right
+"#,
+        )],
+    );
+    let project = pptd::load_project(&entry).unwrap();
+    let first = work.join("first.pptx");
+    pptx::writer::PptxWriter::new(&project).build(&first).unwrap();
+    let first_xml = read_part(&first, "ppt/slides/slide1.xml");
+    assert!(first_xml.contains("rowSpan=\"2\""), "{first_xml}");
+    assert!(first_xml.contains("vMerge=\"1\""), "{first_xml}");
+
+    let converted = work.join("converted");
+    pptx::import::convert_pptx_to_pptd(&first, &converted).unwrap();
+    let decompiled = pptd::load_project(&converted.join("deck.pptd")).unwrap();
+    let pptd::Element::Table(table) = &decompiled.pages[0].elements[0] else {
+        panic!("expected table element");
+    };
+    assert_eq!(table.rows.len(), 3);
+    assert_eq!(table.rows[1][0].row_span, Some(2));
+    assert_eq!(table.rows[2].len(), 1, "vMerge covered cell must be omitted");
+
+    let second = work.join("second.pptx");
+    pptx::writer::PptxWriter::new(&decompiled)
+        .build(&second)
+        .unwrap();
+    let second_xml = read_part(&second, "ppt/slides/slide1.xml");
+    assert!(second_xml.contains("rowSpan=\"2\""), "{second_xml}");
+    assert!(second_xml.contains("vMerge=\"1\""), "{second_xml}");
+}
+
+#[test]
+fn layouts_and_groups_roundtrip_without_duplicating_placeholders() {
+    let deck = r##"
+version: v2
+title: Layouts and Groups
+size: [960, 540]
+layouts:
+  cover:
+    elements:
+      - elementId: bar
+        elementType: shape
+        bounds: [0, 520, 960, 20]
+        shapeName: rect
+        fill: {type: solid, color: "#0070C0"}
+    placeholders:
+      title:
+        bounds: [60, 40, 600, 60]
+        fontSize: 32
+        bold: true
+pages: [pages/p.page]
+"##;
+    let page = r##"
+layout: cover
+groups:
+  card:
+    xfrm: {off: [60, 140], ext: [320, 180], chOff: [60, 140], chExt: [320, 180]}
+elements:
+  - elementId: t1
+    elementType: text
+    placeholder: title
+    bounds: [60, 40, 600, 60]
+    content: {text: "Hello Layout"}
+  - elementId: box1
+    elementType: shape
+    groupId: card
+    bounds: [80, 160, 120, 80]
+    shapeName: roundRect
+    fill: {type: solid, color: "#EEF2FF"}
+  - elementId: lbl1
+    elementType: text
+    groupId: card
+    bounds: [210, 160, 150, 80]
+    content: {text: "Grouped"}
+"##;
+    let (work, entry) = common::write_deck("layouts-groups", deck, &[("p.page", page)]);
+    let project = pptd::load_project(&entry).unwrap();
+    let first = work.join("first.pptx");
+    pptx::writer::PptxWriter::new(&project).build(&first).unwrap();
+    let first_layout = read_part(&first, "ppt/slideLayouts/slideLayout1.xml");
+    assert_eq!(first_layout.matches("<p:ph").count(), 1, "{first_layout}");
+
+    let converted = work.join("converted");
+    pptx::import::convert_pptx_to_pptd(&first, &converted).unwrap();
+    let decompiled = pptd::load_project(&converted.join("deck.pptd")).unwrap();
+    let second = work.join("second.pptx");
+    pptx::writer::PptxWriter::new(&decompiled)
+        .build(&second)
+        .unwrap();
+    let second_layout = read_part(&second, "ppt/slideLayouts/slideLayout1.xml");
+    assert_eq!(
+        second_layout.matches("<p:ph").count(),
+        1,
+        "layout placeholder must not duplicate across build->convert->build: {second_layout}"
+    );
+    let second_slide = read_part(&second, "ppt/slides/slide1.xml");
+    assert!(second_slide.contains("Hello Layout"), "{second_slide}");
+    assert!(second_slide.contains("Grouped"), "{second_slide}");
+}
+
+#[test]
+fn flipped_connector_with_arrows_roundtrips() {
+    let deck = "version: v2\nsize: [960, 540]\npages: [pages/p.page]\n";
+    let page = r##"elements:
+  - elementId: l1
+    elementType: line
+    bounds: [100, 100, 200, 150]
+    viewBox: [200, 150]
+    points: "200,150 0,0"
+    arrow: [arrow, stealth]
+    border: {style: solid, width: 2, color: "#FF0000"}
+"##;
+    let (work, entry) = common::write_deck("flipped-arrow", deck, &[("p.page", page)]);
+    let project = pptd::load_project(&entry).unwrap();
+    let first = work.join("first.pptx");
+    pptx::writer::PptxWriter::new(&project).build(&first).unwrap();
+    let first_xml = read_part(&first, "ppt/slides/slide1.xml");
+    assert!(first_xml.contains("flipH=\"1\""), "{first_xml}");
+    assert!(first_xml.contains("flipV=\"1\""), "{first_xml}");
+
+    let converted = work.join("converted");
+    pptx::import::convert_pptx_to_pptd(&first, &converted).unwrap();
+    let decompiled = pptd::load_project(&converted.join("deck.pptd")).unwrap();
+    let pptd::Element::Line(line) = &decompiled.pages[0].elements[0] else {
+        panic!("expected line element");
+    };
+    assert!(
+        line.arrow.is_some(),
+        "connector arrowheads must survive convert"
+    );
+
+    let second = work.join("second.pptx");
+    pptx::writer::PptxWriter::new(&decompiled)
+        .build(&second)
+        .unwrap();
+    let second_xml = read_part(&second, "ppt/slides/slide1.xml");
+    assert!(
+        second_xml.contains("flipH=\"1\"") && second_xml.contains("flipV=\"1\""),
+        "flipped connector must not double-flip back: {second_xml}"
+    );
+    assert!(
+        second_xml.contains("<a:headEnd type=\"triangle\"")
+            && second_xml.contains("<a:tailEnd type=\"stealth\""),
+        "arrowheads must survive round-trip: {second_xml}"
+    );
+}
+
+#[test]
+fn shadowed_white_text_preserves_white_color() {
+    let deck = "version: v2\nsize: [960, 540]\npages: [pages/p.page]\n";
+    let page = r##"elements:
+  - elementId: t1
+    elementType: text
+    bounds: [40, 40, 600, 120]
+    content:
+      fontSize: 32
+      color: "#FFFFFF"
+      shadow: {blur: 6, color: "#000000", offset: [3, 3]}
+      text: "White Shadowed Text"
+"##;
+    let (work, entry) = common::write_deck("shadowed-white", deck, &[("p.page", page)]);
+    let project = pptd::load_project(&entry).unwrap();
+    let first = work.join("first.pptx");
+    pptx::writer::PptxWriter::new(&project).build(&first).unwrap();
+
+    let converted = work.join("converted");
+    pptx::import::convert_pptx_to_pptd(&first, &converted).unwrap();
+    let decompiled = pptd::load_project(&converted.join("deck.pptd")).unwrap();
+    let pptd::Element::Text(text) = &decompiled.pages[0].elements[0] else {
+        panic!("expected text element");
+    };
+    let color = text
+        .content
+        .color
+        .as_ref()
+        .map(|c| c.0.to_ascii_uppercase())
+        .unwrap_or_default();
+    assert_eq!(
+        color, "#FFFFFF",
+        "outerShdw color must not steal text fill color"
+    );
+}
+
+#[test]
+fn root_relative_targets_and_reordered_sldid_attrs_convert() {
+    let work = temp_dir("root-rel-sldid");
+    let pptx_path = work.join("third_party.pptx");
+    let project = pptd::load_project(&fixture_dir().join("buildable.pptd")).unwrap();
+    pptx::writer::PptxWriter::new(&project)
+        .build(&pptx_path)
+        .unwrap();
+
+    let root_rels = read_part(&pptx_path, "_rels/.rels")
+        .replace("Target=\"ppt/presentation.xml\"", "Target=\"/ppt/presentation.xml\"");
+    let pres_rels = read_part(&pptx_path, "ppt/_rels/presentation.xml.rels")
+        .replace("Target=\"slides/slide1.xml\"", "Target=\"/ppt/slides/slide1.xml\"");
+    let pres_xml = read_part(&pptx_path, "ppt/presentation.xml");
+    // Swap `id="256" r:id="rId..."` to `r:id="rId..." id="256"` (valid XML).
+    let start = pres_xml.find("<p:sldId ").expect("sldId tag");
+    let end = pres_xml[start..].find("/>").expect("sldId close") + start;
+    let tag = &pres_xml[start..end];
+    let id_val = tag
+        .split(" id=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap();
+    let rid_val = tag
+        .split(" r:id=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap();
+    let swapped = format!(
+        "{}<p:sldId r:id=\"{rid_val}\" id=\"{id_val}\"{}",
+        &pres_xml[..start],
+        &pres_xml[end..]
+    );
+
+    rewrite_pptx(
+        &pptx_path,
+        &[
+            ("_rels/.rels", root_rels),
+            ("ppt/_rels/presentation.xml.rels", pres_rels),
+            ("ppt/presentation.xml", swapped),
+        ],
+        &[],
+    );
+
+    let converted = work.join("converted");
+    let report = pptx::import::convert_pptx_to_pptd(&pptx_path, &converted)
+        .expect("root-relative targets and r:id-before-id sldId must convert");
+    assert_eq!(report.page_count, 1);
+}
+
+#[test]
+fn non_ascii_six_byte_srgb_color_does_not_panic() {
+    let work = temp_dir("non-ascii-hex");
+    let pptx_path = work.join("weird_color.pptx");
+    let project = pptd::load_project(&fixture_dir().join("buildable.pptd")).unwrap();
+    pptx::writer::PptxWriter::new(&project)
+        .build(&pptx_path)
+        .unwrap();
+
+    // "蓝色" is 6 UTF-8 bytes; slicing &hex[0..2] panicked before the fix.
+    let slide = read_part(&pptx_path, "ppt/slides/slide1.xml")
+        .replacen("val=\"FFFFFF\"", "val=\"蓝色\"", 1);
+    rewrite_pptx(&pptx_path, &[("ppt/slides/slide1.xml", slide)], &[]);
+
+    let converted = work.join("converted");
+    let report = pptx::import::convert_pptx_to_pptd(&pptx_path, &converted)
+        .expect("malformed non-ASCII 6-byte srgbClr must not panic");
+    assert_eq!(report.page_count, 1);
+}
+
+#[test]
+fn uniform_text_with_less_than_sign_roundtrips() {
+    let deck = "version: v2\nsize: [960, 540]\npages: [pages/p.page]\n";
+    let page = r#"elements:
+  - elementId: t1
+    elementType: text
+    bounds: [40, 40, 500, 80]
+    content:
+      fontSize: 18
+      text: "x < 5 and y > 3"
+"#;
+    let (work, entry) = common::write_deck("lt-roundtrip", deck, &[("p.page", page)]);
+    let project = pptd::load_project(&entry).unwrap();
+    let first = work.join("first.pptx");
+    pptx::writer::PptxWriter::new(&project).build(&first).unwrap();
+
+    let converted = work.join("converted");
+    pptx::import::convert_pptx_to_pptd(&first, &converted).unwrap();
+    let decompiled = pptd::load_project(&converted.join("deck.pptd")).unwrap();
+    let errors: Vec<_> = pptd::validate_project(&decompiled)
+        .into_iter()
+        .filter(|d| !d.is_warning())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "converted text with `<` must validate cleanly: {errors:?}"
+    );
+    let second = work.join("second.pptx");
+    pptx::writer::PptxWriter::new(&decompiled)
+        .build(&second)
+        .unwrap();
+    let slide = read_part(&second, "ppt/slides/slide1.xml");
+    assert!(
+        slide.contains("x &lt; 5 and y &gt; 3"),
+        "inequality text drifted on round-trip: {slide}"
+    );
+}
+

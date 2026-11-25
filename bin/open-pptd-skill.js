@@ -218,7 +218,7 @@ async function promptInstallTargets() {
   const choices = knownTargetDirectories();
   const selected = new Set([0]);
   let cursor = 0;
-  const lines = choices.length + 3;
+  const lines = choices.length + 2;
 
   const render = (initial = false) => {
     if (!initial) {
@@ -449,7 +449,7 @@ async function main() {
     }
     process.exit(res.status ?? 0);
   }
-  if (["build", "check", "dump"].includes(options.command)) {
+  if (["build", "check", "dump", "convert"].includes(options.command)) {
     const binary = resolvePptdBinary();
     if (!binary) {
       console.error("Error: native 'pptd' binary not found.");
@@ -467,15 +467,6 @@ async function main() {
       process.exit(1);
     }
     process.exit(res.status ?? (res.signal ? 1 : 0));
-  }
-  if (options.command === "convert") {
-    const script = join(packageRoot, "skills", SKILL_NAME, "scripts", "convert_pptx.py");
-    const res = spawnSync("python3", [script, ...options.rawArgs], { stdio: "inherit" });
-    if (res.error) {
-      console.error(`Error: failed to run converter: ${res.error.message}`);
-      process.exit(1);
-    }
-    process.exit(res.status ?? 0);
   }
 
   if (options.command === "install") {

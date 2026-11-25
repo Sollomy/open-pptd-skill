@@ -1,12 +1,12 @@
-import os
+from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image, ImageDraw
 
-asset_dir = "open-pptd-skill/tests/decks/02-business-pitch/assets"
-os.makedirs(asset_dir, exist_ok=True)
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
 # 1. Abstract background for Slide 5 (full-bleed divider)
 w, h = 1920, 1080
@@ -31,7 +31,7 @@ for y in range(0, h, 60):
 for x in range(0, w, 120):
     draw_grid.line([(x, 0), (x, h)], fill=(209, 245, 226, 12), width=1)
 
-bg_img.convert("RGB").save(f"{asset_dir}/abstract_bg.png", "PNG", quality=95)
+bg_img.convert("RGB").save(ASSETS_DIR / "abstract_bg.png", "PNG", quality=95)
 print("Generated abstract_bg.png")
 
 # 2. Market Perishable Loss & Cold Storage Capacity Chart
@@ -77,7 +77,7 @@ ax1.grid(axis='y', linestyle='--', alpha=0.35, color='#CCCCCC')
 ax1.spines['top'].set_visible(False)
 ax2.spines['top'].set_visible(False)
 ax1.spines['left'].set_color('#999999')
-ax2.spines['right'].set_color('#999999')
+ax1.spines['right'].set_color('#999999')
 ax1.spines['bottom'].set_color('#999999')
 
 lines1, labels1 = ax1.get_legend_handles_labels()
@@ -85,7 +85,7 @@ lines2, labels2 = ax2.get_legend_handles_labels()
 ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right', frameon=True, facecolor='#FFFFFF', edgecolor='#E0E0E0', fontsize=8)
 
 plt.subplots_adjust(top=0.88, bottom=0.12, left=0.10, right=0.90)
-fig.savefig(f"{asset_dir}/market_perishable_loss.png", dpi=220, facecolor='#FFFFFF')
+fig.savefig(ASSETS_DIR / "market_perishable_loss.png", dpi=220, facecolor='#FFFFFF')
 plt.close(fig)
 print("Generated market_perishable_loss.png")
 
@@ -132,6 +132,6 @@ ax_bot.grid(True, linestyle='--', alpha=0.35, color='#CCCCCC')
 ax_bot.legend(loc='lower right', fontsize=7.2, framealpha=0.9)
 
 plt.subplots_adjust(top=0.90, bottom=0.12, left=0.10, right=0.95, hspace=0.35)
-fig.savefig(f"{asset_dir}/fleet_iot_dashboard.png", dpi=220, facecolor='#FFFFFF')
+fig.savefig(ASSETS_DIR / "fleet_iot_dashboard.png", dpi=220, facecolor='#FFFFFF')
 plt.close(fig)
 print("Generated fleet_iot_dashboard.png")

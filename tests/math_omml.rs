@@ -1,6 +1,7 @@
 //! Integration tests for native OOXML OMML math compilation.
 
-use std::fs;
+mod common;
+
 use std::path::PathBuf;
 
 use open_pptd::pptd;
@@ -10,17 +11,9 @@ fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/buildable")
 }
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("slideforge-math-omml-{tag}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 #[test]
 fn deck_with_math_emits_omml_and_no_raw_latex() {
-    let work = temp_dir("deck");
+    let work = common::TempDir::new("math-omml-deck");
     let pptx_path = work.join("math_deck.pptx");
     let mut project = pptd::load_project(&fixture_dir().join("buildable.pptd")).unwrap();
 
@@ -44,15 +37,7 @@ fn deck_with_math_emits_omml_and_no_raw_latex() {
         .build(&pptx_path)
         .expect("build with math formulas must succeed");
 
-    // Read slide1.xml from the generated pptx
-    let file = fs::File::open(&pptx_path).unwrap();
-    let mut archive = zip::ZipArchive::new(file).unwrap();
-    let mut slide_xml = String::new();
-    {
-        use std::io::Read;
-        let mut entry = archive.by_name("ppt/slides/slide1.xml").unwrap();
-        entry.read_to_string(&mut slide_xml).unwrap();
-    }
+    let slide_xml = common::read_zip_part(&pptx_path, "ppt/slides/slide1.xml");
 
     // Must declare a14 and m namespaces on p:sld
     assert!(
@@ -72,24 +57,40 @@ fn deck_with_math_emits_omml_and_no_raw_latex() {
     assert!(slide_xml.contains("<m:sSup>"), "must contain <m:sSup>");
 
     // Must contain XML-escaped text for \text{a<b&c}
-    assert!(slide_xml.contains("a&lt;b&amp;c"), "must escape special characters in <m:t>");
-    assert!(!slide_xml.contains("<m:t>a<b"), "raw unescaped '<' must not exist in XML");
+    assert!(
+        slide_xml.contains("a&lt;b&amp;c"),
+        "must escape special characters in <m:t>"
+    );
+    assert!(
+        !slide_xml.contains("<m:t>a<b"),
+        "raw unescaped '<' must not exist in XML"
+    );
 
     // Must not leak literal LaTeX commands as text
-    assert!(!slide_xml.contains("\\frac"), "literal '\\frac' must not leak into slide");
-    assert!(!slide_xml.contains("\\times"), "literal '\\times' must not leak into slide");
-    assert!(!slide_xml.contains("\\sqrt"), "literal '\\sqrt' must not leak into slide");
-    assert!(!slide_xml.contains("\\sum"), "literal '\\sum' must not leak into slide");
+    assert!(
+        !slide_xml.contains("\\frac"),
+        "literal '\\frac' must not leak into slide"
+    );
+    assert!(
+        !slide_xml.contains("\\times"),
+        "literal '\\times' must not leak into slide"
+    );
+    assert!(
+        !slide_xml.contains("\\sqrt"),
+        "literal '\\sqrt' must not leak into slide"
+    );
+    assert!(
+        !slide_xml.contains("\\sum"),
+        "literal '\\sum' must not leak into slide"
+    );
 
     // Must be well-formed XML: verify xmltree parses it cleanly
     xmltree::Element::parse(slide_xml.as_bytes()).expect("slide1.xml must be valid XML");
-
-    let _ = fs::remove_dir_all(&work);
 }
 
 #[test]
 fn unsupported_command_fails_build() {
-    let work = temp_dir("unsupported");
+    let work = common::TempDir::new("math-omml-unsupported");
     let pptx_path = work.join("bad.pptx");
     let mut project = pptd::load_project(&fixture_dir().join("buildable.pptd")).unwrap();
 
@@ -104,13 +105,11 @@ fn unsupported_command_fails_build() {
         err_msg.contains("\\foo") || err_msg.contains("foo"),
         "error message must name the unsupported command: {err_msg}"
     );
-
-    let _ = fs::remove_dir_all(&work);
 }
 
 #[test]
 fn letter_spacing_and_text_direction_emitted() {
-    let work = temp_dir("styling");
+    let work = common::TempDir::new("math-omml-styling");
     let pptx_path = work.join("styling.pptx");
     let mut project = pptd::load_project(&fixture_dir().join("buildable.pptd")).unwrap();
 
@@ -123,26 +122,17 @@ fn letter_spacing_and_text_direction_emitted() {
         .build(&pptx_path)
         .expect("build must succeed");
 
-    let file = fs::File::open(&pptx_path).unwrap();
-    let mut archive = zip::ZipArchive::new(file).unwrap();
-    let mut slide_xml = String::new();
-    {
-        use std::io::Read;
-        let mut entry = archive.by_name("ppt/slides/slide1.xml").unwrap();
-        entry.read_to_string(&mut slide_xml).unwrap();
-    }
+    let slide_xml = common::read_zip_part(&pptx_path, "ppt/slides/slide1.xml");
 
     // vert="eaVert" on a:bodyPr
     assert!(slide_xml.contains("vert=\"eaVert\""), "{slide_xml}");
     // spc="150" on a:rPr (2.0 * 75)
     assert!(slide_xml.contains("spc=\"150\""), "{slide_xml}");
-
-    let _ = fs::remove_dir_all(&work);
 }
 
 #[test]
 fn inline_math_emits_alternate_content_with_fallback() {
-    let work = temp_dir("alt_content");
+    let work = common::TempDir::new("math-omml-alt");
     let pptx_path = work.join("alt_content.pptx");
     let mut project = pptd::load_project(&fixture_dir().join("buildable.pptd")).unwrap();
 
@@ -155,14 +145,7 @@ fn inline_math_emits_alternate_content_with_fallback() {
         .build(&pptx_path)
         .expect("build with inline math must succeed");
 
-    let file = fs::File::open(&pptx_path).unwrap();
-    let mut archive = zip::ZipArchive::new(file).unwrap();
-    let mut slide_xml = String::new();
-    {
-        use std::io::Read;
-        let mut entry = archive.by_name("ppt/slides/slide1.xml").unwrap();
-        entry.read_to_string(&mut slide_xml).unwrap();
-    }
+    let slide_xml = common::read_zip_part(&pptx_path, "ppt/slides/slide1.xml");
 
     // Inline formula must be wrapped in mc:AlternateContent
     assert!(
@@ -187,6 +170,57 @@ fn inline_math_emits_alternate_content_with_fallback() {
         slide_xml.contains("baseline=\"30000\""),
         "Fallback branch must contain superscript baseline shift"
     );
+}
 
-    let _ = fs::remove_dir_all(&work);
+#[test]
+fn mathbb_v_norm_delimiters_and_lim_superscript_compile_and_roundtrip() {
+    let work = common::TempDir::new("math-omml-fixes");
+    let pptx_path = work.join("fixes.pptx");
+    let mut project = pptd::load_project(&fixture_dir().join("buildable.pptd")).unwrap();
+
+    let math_text = [
+        r"<p><latex>\mathbb{V} \ne \mathbb{W}</latex></p>",
+        r"<p><latex>\|x\| + \lfloor y \rfloor + \lceil z \rceil</latex></p>",
+        r"<p><latex>\lim_{x \to 0}^+ f(x)</latex></p>",
+        r"<p><latex>\lim_{n \to \infty} a_n</latex></p>",
+    ]
+    .join("");
+    if let Some(pptd::Element::Text(t)) = project.pages[0].elements.first_mut() {
+        t.common.bounds.height = 450.0;
+        t.content.text = math_text;
+    }
+
+    let issues = pptd::validate_project(&project);
+    let errors: Vec<_> = issues.iter().filter(|d| !d.is_warning()).collect();
+    assert!(errors.is_empty(), "check must accept all formulas: {errors:?}");
+
+    pptx::writer::PptxWriter::new(&project)
+        .build(&pptx_path)
+        .expect("build must accept every formula that check accepted");
+
+    let slide_xml = common::read_zip_part(&pptx_path, "ppt/slides/slide1.xml");
+    xmltree::Element::parse(slide_xml.as_bytes()).expect("slide1.xml must be valid XML");
+    assert!(slide_xml.contains('𝕍'), "\\mathbb{{V}} must map to 𝕍: {slide_xml}");
+    assert!(slide_xml.contains('𝕎'), "\\mathbb{{W}} must map to 𝕎: {slide_xml}");
+    assert!(slide_xml.contains('‖'), "\\| must emit ‖: {slide_xml}");
+    assert!(slide_xml.contains('⌊') && slide_xml.contains('⌋'), "floor delimiters missing");
+    assert!(slide_xml.contains('⌈') && slide_xml.contains('⌉'), "ceil delimiters missing");
+    assert!(
+        !slide_xml.contains(r#"<m:chr m:val="lim""#),
+        "\\lim^... must not emit invalid multi-char <m:nary> chr: {slide_xml}"
+    );
+    assert!(slide_xml.contains("<m:limLow>"), "\\lim must emit <m:limLow>: {slide_xml}");
+
+    // Round-trip via convert must keep the limit expression instead of dropping it.
+    let converted = work.join("converted");
+    pptx::import::convert_pptx_to_pptd(&pptx_path, &converted).unwrap();
+    let decompiled = pptd::load_project(&converted.join("deck.pptd")).unwrap();
+    let decompiled_text = match &decompiled.pages[0].elements[0] {
+        pptd::Element::Text(t) => &t.content.text,
+        other => panic!("expected text element, got {other:?}"),
+    };
+    assert!(
+        decompiled_text.contains(r"\lim_") || decompiled_text.contains("lim"),
+        "decompiled OMML must preserve \\lim limit: {decompiled_text}"
+    );
 }
