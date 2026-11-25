@@ -12,10 +12,21 @@
 # Exit code 0 only when every deck passes every stage.
 
 set -uo pipefail
-cd "$(dirname "$0")" || exit 1
 
 PPTD="${PPTD:-pptd}"
+if [[ "$PPTD" == */* && "$PPTD" != /* ]]; then
+  PPTD="$(pwd)/$PPTD"
+fi
 PYTHON="${PYTHON:-python3}"
+if [[ "$PYTHON" == */* && "$PYTHON" != /* ]]; then
+  PYTHON="$(pwd)/$PYTHON"
+fi
+if [[ -n "${VALIDATE:-}" && "$VALIDATE" == */* && "$VALIDATE" != /* ]]; then
+  VALIDATE="$(pwd)/$VALIDATE"
+fi
+
+cd "$(dirname "$0")" || exit 1
+
 VALIDATE="${VALIDATE:-../../skills/open-pptd/scripts/validate_pptx.py}"
 RENDER="${RENDER:-0}"
 ONLY="${ONLY:-}"

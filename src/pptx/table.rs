@@ -226,7 +226,7 @@ fn border_sides(spec: Option<&BorderSpec>) -> [Option<Border>; 4] {
 
 /// One cell-side border: `<a:lnL/lnR/lnT/lnB>`.
 /// When unspecified (`None`), the XML element is omitted so the neighbour's border survives.
-/// When explicitly set to none (e.g. width == 0), `<a:noFill/>` is emitted.
+/// When explicitly set to none (e.g. width <= 0), `<a:noFill/>` is emitted.
 fn cell_border_xml(
     xml: &mut Xml,
     theme: Option<&Theme>,
@@ -236,7 +236,7 @@ fn cell_border_xml(
     let Some(border) = border else {
         return Ok(());
     };
-    if border.width.is_some_and(|w| w == 0.0) {
+    if border.width.is_some_and(|w| w <= 0.0) {
         xml.start(tag, &[]);
         xml.leaf("a:noFill", &[]);
         xml.end(tag);
@@ -384,15 +384,13 @@ pub(crate) fn render_table(
     xml.leaf("p:cNvGraphicFramePr", &[]);
     xml.leaf("p:nvPr", &[]);
     xml.end("p:nvGraphicFramePr");
-    xml.start("p:xfrm", &[]);
-    let (x, y) = (emu(bounds.x).to_string(), emu(bounds.y).to_string());
-    let (cx, cy) = (
-        emu(bounds.width).to_string(),
-        emu(bounds.height).to_string(),
+    super::render::xfrm_element(
+        xml,
+        "p:xfrm",
+        table.common.bounds,
+        table.common.rotation,
+        table.common.flip,
     );
-    xml.leaf("a:off", &[("x", &x), ("y", &y)]);
-    xml.leaf("a:ext", &[("cx", &cx), ("cy", &cy)]);
-    xml.end("p:xfrm");
     xml.start("a:graphic", &[]);
     xml.start(
         "a:graphicData",

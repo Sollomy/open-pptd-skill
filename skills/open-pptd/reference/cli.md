@@ -34,10 +34,8 @@ script is meant to be read and run from a checked-out tree you can inspect.
    which builds the same pinned version rather than moving `main` HEAD.
 5. **Audit trail**: the log prints the installed version and the verified SHA-256, and the
    post-install check re-probes `pptd --version` against the pinned version.
-6. **Custom directory**: `--dir <PATH>` installs to `<PATH>/pptd` (default
-   `~/.local/bin`). For the cargo fallback, a `<PATH>` ending in `bin` is treated as a
-   prefix root (binary lands in `<PATH>/pptd`); any other `<PATH>` receives the binary
-   directly.
+6. **Custom directory**: `--dir <PATH>` installs the binary to `<PATH>/pptd` (default
+   `~/.local/bin`), for both the prebuilt release download and the Cargo source fallback.
 
 ### From Source (via Cargo)
 ```bash
@@ -63,7 +61,7 @@ Checks for:
 - Undefined theme color `$colorKey` references
 - Missing local image or media files under `assets/`
 - Unsupported rich text tags (such as `<ul>`, `<ol>`, `<li>`)
-- Unsupported element types (such as `chart`)
+- Unsupported declarative `chart` elements (`data`/`series`; native `chartPart` elements produced by `pptd convert` are supported and checked for missing files)
 - Image fills on shapes (`fill: {type: image}` is rejected; only backgrounds support image fills)
 - Elements positioned outside the slide canvas boundaries (error for entirely out-of-bounds, warning for partially out-of-bounds)
 - Declared animations (warns that `animations` are parsed in AST but not emitted to `p:timing`)
@@ -75,12 +73,11 @@ Checks for:
 **`check` is a lint, not a build dry-run.** These constructs pass `check` and only fail in `build`:
 
 - LaTeX that the parser rejects but the lint does not scan for, e.g. an unclosed `{` (`error: invalid PPTD: LaTeX math syntax error: unclosed '{'`)
-- Table merges that escape the grid (`not supported yet: table 'tb1' merge at row 1 col 1 escapes the grid`; coordinates are 0-based)
+- Table merges that escape the grid (`not supported yet: table 'tb1' merge at row 1 col 1 escapes the grid`; coordinates are 1-based)
 - A `line` with fewer than two points (`line 'l1' needs at least 2 points`)
 - Unsupported SVG path commands
-- Documented-but-unimplemented fields (`cropShape`, `softEdge`, `fill` on a table, `customFonts` in the manifest) — these were rejected by `check` before v1.4.2 and are accepted now
 
-Manifest-level field checking only runs when the entry file is named `deck.pptd` or `presentation.pptd` (or matches the deck `title`); a manifest with any other file name is validated without that check.
+`cropShape`, `softEdge`, and `Table.fill` are implemented and rendered by `build`; `customFonts` in the manifest is accepted by `check` (metadata only; offline `build` does not fetch remote fonts). Manifest-level field checking always validates the exact entry file passed to `pptd check` (`entry_path`), regardless of its filename.
 
 Always run `pptd build` before declaring a deck done.
 ---
@@ -99,7 +96,7 @@ pptd build <MANIFEST> [OPTIONS]
 - `<MANIFEST>`: Path to `deck.pptd` manifest.
 
 **Options:**
-- `-o, --output <PATH>`: Output `.pptx` file path (default: `<title>.pptx` or `presentation.pptx`).
+- `-o, --output <PATH>`: Output `.pptx` file path (default: `<entry basename>.pptx` alongside the manifest).
 - `-f, --force`: Bypass `.sync.hash` overwrite guard to overwrite an existing `.pptx` file that has been modified externally.
 ```bash
 pptd build deck.pptd -o my_slides.pptx
@@ -140,7 +137,7 @@ pptd convert input.pptx ./project_dir --fail-on-loss
 |---|---|---|
 | `chart` | Native `<c:chart>` whose part or relationship is missing from the package | slide, shape |
 | `hyperlink` | Run-level `<a:hlinkClick>` that is internal, action-based (`ppaction://…`), or unresolved; also a `<a:endParaRPr>` click marker extending a link over the paragraph mark | slide, shape |
-| `media` | Picture/clip whose extension is outside PNG / JPEG / GIF (pictures) or MP4 / MOV / MP3 / WAV (clips) | slide, shape |
+| `media` | Picture/clip whose extension is outside PNG / JPEG / GIF (pictures) or MP4 / M4V / MOV / MP3 / M4A / WAV / WMA (clips) | slide, shape |
 | `font` | `+mj-lt` / `+mn-lt` alias that the theme cannot resolve, so the run falls back to the default face | slide, shape |
 | `table_cell_margin` | Cell insets that could not be carried into the PPTD model | slide, table |
 | `table_cell_autofit` | `a:normAutofit@fontScale` / `@lnSpcReduction` (the shrink factors PowerPoint applied) | slide, table |

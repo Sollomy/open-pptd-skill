@@ -24,10 +24,7 @@ static ICONS: OnceLock<HashMap<String, FaIcon>> = OnceLock::new();
 
 /// The embedded dataset (`"mobile-screen" -> FaIcon`).
 fn icons() -> &'static HashMap<String, FaIcon> {
-    ICONS.get_or_init(|| {
-        // The asset is a JSON document, which is valid YAML; parse it once.
-        serde_yaml::from_str(ASSET).unwrap_or_default()
-    })
+    ICONS.get_or_init(|| serde_json::from_str(ASSET).unwrap_or_default())
 }
 
 /// An error encountered when resolving a Font Awesome icon.

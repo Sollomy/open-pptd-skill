@@ -294,6 +294,7 @@ async function chooseManifest(paths) {
   if (paths.length === 1) return paths[0];
   elements.deckOptions.replaceChildren();
   const choice = new Promise((resolve) => {
+    let settled = false;
     for (const path of paths) {
       const button = document.createElement("button");
       button.className = "deck-option";
@@ -302,6 +303,7 @@ async function chooseManifest(paths) {
       button.querySelector("strong").textContent = basename(path);
       button.querySelector("small").textContent = path;
       button.addEventListener("click", () => {
+        settled = true;
         elements.deckDialog.close();
         resolve(path);
       });
@@ -310,7 +312,10 @@ async function chooseManifest(paths) {
     elements.deckDialog.addEventListener(
       "close",
       () => {
-        if (elements.deckDialog.returnValue === "cancel") resolve(null);
+        if (!settled) {
+          settled = true;
+          resolve(null);
+        }
       },
       { once: true },
     );
@@ -404,7 +409,11 @@ async function openDirectoryHandleReadOnly(directoryHandle, label = directoryHan
   const manifests = [...state.fileIndex.keys()].filter((path) => path.toLowerCase().endsWith(".pptd"));
   if (manifests.length === 0) throw new Error("文件夹里没有找到 .pptd 清单文件");
   const manifestPath = await chooseManifest(manifests.sort());
-  if (manifestPath) await loadManifest(manifestPath, `${label}/${manifestPath} · 拖放只读模式`);
+  if (!manifestPath) {
+    setLoading(false);
+    return;
+  }
+  await loadManifest(manifestPath, `${label}/${manifestPath} · 拖放只读模式`);
 }
 
 async function pickDirectory() {
@@ -526,8 +535,10 @@ async function writeFile(path, content) {
   const writable = await file.createWritable();
   try {
     await writable.write(content);
-  } finally {
     await writable.close();
+  } catch (error) {
+    await writable.abort().catch(() => {});
+    throw error;
   }
   state.fileIndex.set(path, file);
 }

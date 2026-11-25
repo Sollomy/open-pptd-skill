@@ -1,23 +1,19 @@
 //! Integration tests: semantic validation of loaded PPTD projects.
 
+mod common;
+
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use open_pptd::pptd;
 use open_pptd::pptd::validate::validate_project;
 
 const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/demo/demo.pptd");
 
-/// Write a minimal deck into a unique temp directory and return the entry path.
-fn tmp_deck(tag: &str, deck_yaml: &str, pages: &[(&str, &str)]) -> String {
-    let dir = std::env::temp_dir().join(format!("slideforge-test-{tag}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(dir.join("pages")).unwrap();
-    fs::write(dir.join("deck.pptd"), deck_yaml).unwrap();
-    for (name, body) in pages {
-        fs::write(dir.join("pages").join(name), body).unwrap();
-    }
-    dir.join("deck.pptd").to_string_lossy().into_owned()
+/// Write a minimal deck into a unique RAII temp directory and return `(dir, entry_path)`.
+fn tmp_deck(tag: &str, deck_yaml: &str, pages: &[(&str, &str)]) -> (common::TempDir, PathBuf) {
+    common::write_deck(tag, deck_yaml, pages)
 }
 
 const MINIMAL_DECK: &str = "version: v2\nsize: [960, 540]\npages:\n  - pages/p.page\n";
@@ -32,7 +28,7 @@ elements:
     content:
       text: '<p>text <latex>\begin{align} a &= b \end{align}</latex> more</p>'
 "#;
-    let entry = tmp_deck("latex-align-inline", MINIMAL_DECK, &[("p.page", inline_page)]);
+    let (_tmp, entry) = tmp_deck("latex-align-inline", MINIMAL_DECK, &[("p.page", inline_page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -55,7 +51,7 @@ elements:
     content:
       text: '<p>where \( \begin{aligned} a &= b \\ c &= d \end{aligned} \) holds</p>'
 "#;
-    let entry = tmp_deck("latex-align-display", MINIMAL_DECK, &[("p.page", display_page)]);
+    let (_tmp, entry) = tmp_deck("latex-align-display", MINIMAL_DECK, &[("p.page", display_page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(issues.is_empty(), "display math must stay clean: {issues:?}");
@@ -71,7 +67,7 @@ elements:
     content:
       text: '<latex>\newcommand{\R}{\mathbb{R}}\def\norm#1{\left|#1\right|} \norm{x} \in \R^n</latex>'
 "#;
-    let entry = tmp_deck("latex-macros", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("latex-macros", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(issues.is_empty(), "user macros must validate cleanly: {issues:?}");
@@ -84,7 +80,7 @@ elements:
     content:
       text: '<latex>\newcommand{\R}{a}\newcommand{\R}{b} \R</latex>'
 "#;
-    let entry = tmp_deck("latex-macros-bad", MINIMAL_DECK, &[("p.page", bad_page)]);
+    let (_tmp, entry) = tmp_deck("latex-macros-bad", MINIMAL_DECK, &[("p.page", bad_page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -121,7 +117,7 @@ elements:
     bounds: [0, 0, 400, 300]
     chartPart: media/missing.xml
 "#;
-    let entry = tmp_deck("chart-missing", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("chart-missing", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -141,7 +137,7 @@ elements:
     bounds: [0, 0, 400, 300]
     chartPart: ../outside/chart1.xml
 "#;
-    let entry = tmp_deck("chart-escape", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("chart-escape", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -165,7 +161,7 @@ elements:
     bounds: [0, 60, 100, 50]
     content: {text: second}
 "#;
-    let entry = tmp_deck("dup-id", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("dup-id", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -185,7 +181,7 @@ elements:
     bounds: [0, 0, 0, 50]
     content: {text: nope}
 "#;
-    let entry = tmp_deck("zero-bounds", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("zero-bounds", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -207,7 +203,7 @@ elements:
       style: "$nope"
       text: hi
 "#;
-    let entry = tmp_deck("missing-style", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("missing-style", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -234,7 +230,7 @@ elements:
       - type: bar
         encode: {x: a, y: b}
 "#;
-    let entry = tmp_deck("chart-rows", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("chart-rows", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -260,7 +256,7 @@ elements:
       - type: radar
         encode: {category: a, y: b}
 "#;
-    let entry = tmp_deck("unknown-series", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("unknown-series", MINIMAL_DECK, &[("p.page", page)]);
     let result = pptd::load_project(Path::new(&entry));
     let message = result
         .expect_err("unknown series type must fail to parse")
@@ -284,7 +280,7 @@ elements:
       - - text: a
         - text: b
 "#;
-    let entry = tmp_deck("table-ratios", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("table-ratios", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -307,7 +303,7 @@ animations:
   - elementId: ghost
     effect: fade-in
 "#;
-    let entry = tmp_deck("animation-target", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("animation-target", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -329,7 +325,7 @@ elements:
       text: hi
       color: "$nonexistentColor"
 "#;
-    let entry = tmp_deck("undef-color", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("undef-color", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -349,7 +345,7 @@ elements:
     bounds: [0, 0, 100, 50]
     src: "assets/missing_animation.gif"
 "#;
-    let entry = tmp_deck("missing-gif", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("missing-gif", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -369,7 +365,7 @@ elements:
     bounds: [0, 0, 100, 50]
     src: "assets/nonexistent_image.png"
 "#;
-    let entry = tmp_deck("missing-img", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("missing-img", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -389,7 +385,7 @@ elements:
     bounds: [0, 0, 100, 50]
     shapeName: "circle"
 "#;
-    let entry = tmp_deck("bad-shape", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("bad-shape", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -410,7 +406,7 @@ elements:
     content:
       text: "<p><ul><li>leaked list item</li></ul></p>"
 "#;
-    let entry = tmp_deck("unsupported-tag", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("unsupported-tag", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -433,7 +429,7 @@ elements:
       text: "hello"
       font_sizee: 24
 "##;
-    let entry = tmp_deck("unknown-field", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("unknown-field", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -462,7 +458,7 @@ elements:
       text: |
         这是一段非常非常长的文字内容，在一个只有20pt高度的极小容器框里面排版，肯定会造成严重的上下文字视觉溢出，系统应当发出明确的文本溢出警告。
 "#;
-    let entry = tmp_deck("overflow", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("overflow", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -483,7 +479,7 @@ elements:
     content:
       text: 'energy <latex>\frac{E}{\foo}</latex> and \(\bar{x}\)'
 "#;
-    let entry = tmp_deck("latex-unsupported", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("latex-unsupported", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     let latex_issue = issues
@@ -514,8 +510,7 @@ elements:
     softEdge: 4
     fit: {mode: cover}
 "#;
-    let dir = std::env::temp_dir().join(format!("slideforge-test-img-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
+    let dir = common::TempDir::new("validate-img");
     fs::create_dir_all(dir.join("pages")).unwrap();
     fs::create_dir_all(dir.join("assets")).unwrap();
     fs::write(dir.join("deck.pptd"), MINIMAL_DECK).unwrap();
@@ -544,7 +539,7 @@ elements:
       - [{text: a}, {text: b}]
       - [{text: c}, {text: d}]
 "##;
-    let entry = tmp_deck("table-fill", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("table-fill", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -557,7 +552,7 @@ elements:
 fn custom_fonts_in_manifest_are_accepted() {
     let deck = "version: v2\nsize: [960, 540]\ncustomFonts:\n  - family: JetBrains Mono\n    src: \"https://fonts.googleapis.com/css2?family=JetBrains+Mono\"\npages:\n  - pages/p.page\n";
     let page = "elements:\n  - elementId: t1\n    elementType: text\n    bounds: [0, 0, 400, 60]\n    content:\n      fontFamily: JetBrains Mono\n      text: \"mono 123\"\n";
-    let entry = tmp_deck("custom-fonts", deck, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("custom-fonts", deck, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -582,7 +577,7 @@ elements:
       - [{text: a, border: [null, null, null, null]}, {text: b}]
       - [{text: c}, {text: d}]
 "#;
-    let entry = tmp_deck("border-array", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("border-array", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let pptd::Element::Table(table) = &project.pages[0].elements[0] else {
         panic!("expected a table element");
@@ -607,7 +602,7 @@ elements:
       - [{text: a, border: [{style: solid, width: 1, color: "#000000"}, null]}, {text: b}]
       - [{text: c}, {text: d}]
 "##;
-    let entry = tmp_deck("border-pair", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("border-pair", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let pptd::Element::Table(table) = &project.pages[0].elements[0] else {
         panic!("expected a table element");
@@ -652,7 +647,7 @@ fn documented_preset_shapes_validate() {
         let page = format!(
             "elements:\n  - elementId: s1\n    elementType: shape\n    shapeName: {name}\n    bounds: [0, 0, 100, 100]\n    fill: {{type: solid, color: \"#FF0000\"}}\n"
         );
-        let entry = tmp_deck(&format!("shape-{name}"), MINIMAL_DECK, &[("p.page", &page)]);
+        let (_tmp, entry) = tmp_deck(&format!("shape-{name}"), MINIMAL_DECK, &[("p.page", &page)]);
         let project = pptd::load_project(Path::new(&entry)).unwrap();
         let issues = validate_project(&project);
         assert!(
@@ -663,7 +658,7 @@ fn documented_preset_shapes_validate() {
 
     // A genuine typo still has to fail.
     let bad = "elements:\n  - elementId: s1\n    elementType: shape\n    shapeName: irregularSeal3\n    bounds: [0, 0, 100, 100]\n";
-    let entry = tmp_deck("shape-typo", MINIMAL_DECK, &[("p.page", bad)]);
+    let (_tmp, entry) = tmp_deck("shape-typo", MINIMAL_DECK, &[("p.page", bad)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     assert!(
         validate_project(&project)
@@ -677,7 +672,7 @@ fn documented_preset_shapes_validate() {
 fn manifest_whitelist_reads_the_entry_file_not_a_sibling() {
     // A directory may hold several manifests; the diagnostics must inspect the
     // one the caller passed, not a conventionally named neighbour.
-    let entry = tmp_deck("manifest-sibling", MINIMAL_DECK, &[("p.page", "elements: []\n")]);
+    let (_tmp, entry) = tmp_deck("manifest-sibling", MINIMAL_DECK, &[("p.page", "elements: []\n")]);
     let dir = Path::new(&entry).parent().unwrap().to_path_buf();
     let custom = dir.join("custom.pptd");
     fs::write(
@@ -721,7 +716,7 @@ elements:
       width: 0.75
       color: '#3A3A40'
 "#;
-    let entry = tmp_deck("flattened-line", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("flattened-line", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -744,7 +739,7 @@ elements:
       type: solid
       color: '#FF0000'
 "#;
-    let entry = tmp_deck("zero-rect", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("zero-rect", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -767,8 +762,7 @@ elements:
       shapeName: roundRect
       bogusField: 123
 "#;
-    let dir = std::env::temp_dir().join(format!("test-cropshape-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
+    let dir = common::TempDir::new("validate-cropshape");
     fs::create_dir_all(dir.join("pages")).unwrap();
     fs::create_dir_all(dir.join("assets")).unwrap();
     fs::write(dir.join("deck.pptd"), MINIMAL_DECK).unwrap();
@@ -799,7 +793,7 @@ elements:
       - - text: "cell 3"
         - text: "cell 4"
 "##;
-    let entry = tmp_deck("table-cell-unknown", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("table-cell-unknown", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -822,7 +816,7 @@ animations:
     effect: fade-in
     bogusAnimProp: 99
 "#;
-    let entry = tmp_deck("anim-unknown", MINIMAL_DECK, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("anim-unknown", MINIMAL_DECK, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
     assert!(
@@ -847,7 +841,7 @@ elements:
       bogusContent1: 1
       bogusContent2: 2
 "##;
-    let entry = tmp_deck("batch-unknown", deck, &[("p.page", page)]);
+    let (_tmp, entry) = tmp_deck("batch-unknown", deck, &[("p.page", page)]);
     let project = pptd::load_project(Path::new(&entry)).unwrap();
     let issues = validate_project(&project);
 
@@ -900,4 +894,191 @@ fn single_source_known_fields_coverage() {
     assert!(Element::is_known_field("chart", "chartPart"));
     assert!(!Element::is_known_field("text", "shapeName"));
     assert!(!Element::is_known_field("shape", "content"));
+}
+
+#[test]
+fn outside_image_src_is_rejected_by_validation() {
+    let outer = common::TempDir::new("outside-img-root");
+    let outside_png = outer.join("secret.png");
+    fs::write(&outside_png, b"\x89PNG\r\n\x1a\n").unwrap();
+
+    let page = format!(
+        "elements:\n  - elementId: img1\n    elementType: image\n    bounds: [0, 0, 100, 100]\n    src: \"{}\"\n",
+        outside_png.display()
+    );
+    let (_tmp, entry) = tmp_deck("outside-img", MINIMAL_DECK, &[("p.page", &page)]);
+    let project = pptd::load_project(&entry).unwrap();
+    let issues = validate_project(&project);
+    assert!(
+        issues.iter().any(|d| !d.is_warning()),
+        "absolute image path outside project must be rejected: {issues:?}"
+    );
+}
+
+#[test]
+fn bare_manifest_filename_still_enforces_page_containment() {
+    let outer = common::TempDir::new("bare-manifest-escape");
+    fs::write(outer.join("outside.page"), "elements: []\n").unwrap();
+    let proj = outer.join("proj");
+    fs::create_dir_all(&proj).unwrap();
+    fs::write(
+        proj.join("deck.pptd"),
+        "version: v2\nsize: [960, 540]\npages:\n  - ../outside.page\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_pptd"))
+        .args(["check", "deck.pptd"])
+        .current_dir(&proj)
+        .output()
+        .expect("run pptd check with bare filename");
+    assert!(
+        !output.status.success(),
+        "bare-filename `pptd check deck.pptd` must still reject ../outside.page; stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn plain_less_than_inequality_passes_validation() {
+    let page = r#"
+elements:
+  - elementId: t1
+    elementType: text
+    bounds: [0, 0, 400, 80]
+    content:
+      text: "x < 5 and y > 3"
+"#;
+    let (_tmp, entry) = tmp_deck("plain-lt", MINIMAL_DECK, &[("p.page", page)]);
+    let project = pptd::load_project(&entry).unwrap();
+    let errors: Vec<_> = validate_project(&project)
+        .into_iter()
+        .filter(|d| !d.is_warning())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "plain `<` inequality must not be flagged as an HTML tag: {errors:?}"
+    );
+}
+
+#[test]
+fn table_cells_validate_html_latex_colors_and_fills() {
+    let page = r#"
+elements:
+  - elementId: tbl1
+    elementType: table
+    bounds: [0, 0, 500, 200]
+    columnWidths: [0.5, 0.5]
+    rowHeights: [0.5, 0.5]
+    rows:
+      - - text: "<ul><li>leaked</li></ul>"
+        - text: '<latex>\unknownCmd{x}</latex>'
+      - - text: "bad color"
+          color: "$missingTextColor"
+        - text: "bad fill"
+          fill: {type: solid, color: "$missingFillColor"}
+"#;
+    let (_tmp, entry) = tmp_deck("table-cell-qa", MINIMAL_DECK, &[("p.page", page)]);
+    let project = pptd::load_project(&entry).unwrap();
+    let issues = validate_project(&project);
+    assert!(
+        issues.iter().any(|d| d.message.contains("<ul>")),
+        "table cell leaked <ul> must be reported: {issues:?}"
+    );
+    assert!(
+        issues.iter().any(|d| d.message.contains("\\unknownCmd")),
+        "table cell unsupported LaTeX must be reported: {issues:?}"
+    );
+    assert!(
+        issues
+            .iter()
+            .any(|d| d.message.contains("$missingTextColor")),
+        "table cell undefined color must be reported: {issues:?}"
+    );
+    assert!(
+        issues
+            .iter()
+            .any(|d| d.message.contains("$missingFillColor")),
+        "table cell undefined fill color must be reported: {issues:?}"
+    );
+}
+
+#[test]
+fn cyclic_page_groups_are_rejected_without_crashing() {
+    let page = r#"
+groups:
+  root:
+    xfrm: {off: [0, 0], ext: [400, 300], chOff: [0, 0], chExt: [400, 300]}
+  g1:
+    xfrm: {off: [10, 10], ext: [100, 100], chOff: [10, 10], chExt: [100, 100]}
+    parent: g2
+  g2:
+    xfrm: {off: [20, 20], ext: [100, 100], chOff: [20, 20], chExt: [100, 100]}
+    parent: g1
+elements:
+  - elementId: t1
+    elementType: text
+    groupId: g1
+    bounds: [10, 10, 80, 40]
+    content: {text: "loop"}
+"#;
+    let (_tmp, entry) = tmp_deck("cyclic-groups", MINIMAL_DECK, &[("p.page", page)]);
+    let project = pptd::load_project(&entry).unwrap();
+    let issues = validate_project(&project);
+    assert!(
+        issues.iter().any(|d| !d.is_warning()),
+        "cyclic Page.groups must produce a validation error: {issues:?}"
+    );
+}
+
+#[test]
+fn posterless_video_and_invalid_crop_shape_and_negative_line_are_rejected() {
+    let dir = common::TempDir::new("validate-video-crop-line");
+    fs::create_dir_all(dir.join("pages")).unwrap();
+    fs::create_dir_all(dir.join("assets")).unwrap();
+    fs::write(dir.join("deck.pptd"), MINIMAL_DECK).unwrap();
+    fs::write(dir.join("assets/pic.png"), b"\x89PNG\r\n\x1a\n").unwrap();
+    fs::write(dir.join("assets/demo.mp4"), b"\x00\x00\x00\x18ftypmp42").unwrap();
+    fs::write(
+        dir.join("pages/p.page"),
+        r#"
+elements:
+  - elementId: vid1
+    elementType: video
+    bounds: [0, 0, 200, 120]
+    src: assets/demo.mp4
+  - elementId: img1
+    elementType: image
+    bounds: [220, 0, 100, 100]
+    src: assets/pic.png
+    cropShape: {shapeName: notARealShape}
+  - elementId: negline
+    elementType: shape
+    shapeName: line
+    bounds: [40, 200, -10, 0]
+"#,
+    )
+    .unwrap();
+
+    let project = pptd::load_project(&dir.join("deck.pptd")).unwrap();
+    let issues = validate_project(&project);
+    assert!(
+        issues
+            .iter()
+            .any(|d| !d.is_warning() && d.message.contains("poster")),
+        "poster-less video must be rejected by check: {issues:?}"
+    );
+    assert!(
+        issues
+            .iter()
+            .any(|d| !d.is_warning() && d.message.contains("notARealShape")),
+        "invalid image.cropShape shapeName must be rejected: {issues:?}"
+    );
+    assert!(
+        issues
+            .iter()
+            .any(|d| !d.is_warning() && d.message.contains("negline")),
+        "negative-axis flattened line must be rejected: {issues:?}"
+    );
 }

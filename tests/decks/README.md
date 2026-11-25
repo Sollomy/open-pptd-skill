@@ -1,6 +1,6 @@
 # Open-PPTD 垂直场景实测与 Kimi 标杆复现测试套件 (DEV-583)
 
-本目录包含针对 `open-pptd` 编译器（Rust 核心）与 AI Agent Skill 的全量真实验收测试工程。覆盖 **8 大商业/工程垂直场景** 与 **2 大 Kimi Slide 官网高难度案例复现**，共计 **12 个独立工程，98 页原生幻灯片**。
+本目录包含针对 `open-pptd` 编译器（Rust 核心）与 AI Agent Skill 的全量真实验收测试工程。覆盖 **8 大商业/工程垂直场景** 与 **2 大 Kimi Slide 官网高难度案例复现**，共计 **12 个独立工程，107 页原生幻灯片**。
 
 所有工程均遵循真实数据源标准、严禁 AI 编造假数据与卡片墙堆砌，经过全量 PPTD 语法压力测试、自动化校验（`pptd check`）、原生二进制编译（`pptd build`）、OpenXML 语义结构审查（`validate_pptx.py`）以及 Headless 高清渲染走查（LibreOffice + pdftoppm）。
 
@@ -23,7 +23,7 @@
 | `10a-gwtc5-gravitational-wave` | **Kimi 标杆复现 B1**：引力波目录天体物理全景图谱 | 960×540 (16:9) | 11 | `academic/paper-white-courseware` (极简学术信息图) | 完整复现 Kimi 官网左侧常驻导航轨（Rail Navigation）、全天区定位图、质量间隙双峰分布、LISA 天基天线 | **PASS** (11/11) |
 | `10b-urban-heat-island` | **Kimi 标杆复现 B2**：城市热岛微气候热力学信息图 | 960×540 (16:9) | 2 | `scientific/dark-thermodynamic` (暗色热力学图谱) | 暗色信息图、左侧温度对比色阶卡、热平衡公式拆解、30m 空间网格温度微区矩阵 | **PASS** (2/2) |
 
-**全套件统计**：共计 **12 个项目**，**98 张幻灯片**，100% 通过编译与结构校验。
+**全套件统计**：共计 **12 个项目**，**107 张幻灯片**，100% 通过编译与结构校验。
 
 ---
 
@@ -59,7 +59,7 @@ RENDER=1 PYTHON=../../.venv/bin/python ./verify_all.sh
 
 ## 3. 核心缺陷与编译器边界排查汇总 (Bug & Defect Catalog)
 
-在实测 98 页复杂场景的过程中，各攻坚智能体深度探针触发并定位了多项编译器底层缺陷与 Skill 文档错漏：
+在实测 107 页复杂场景的过程中，各攻坚智能体深度探针触发并定位了多项编译器底层缺陷与 Skill 文档错漏：
 
 ### P0 — 导致 PPTX 损坏的致命错误 (Critical / Corrupt Output)
 1. **`curve: smooth` 闭合标签错误导致 XML 格式损坏**：
@@ -132,6 +132,6 @@ RENDER=1 PYTHON=../../.venv/bin/python ./verify_all.sh
 2. **缺乏原生声明式图表支持（Native Chart Gap）**：
    - *痛点*：Kimi 呈现的三重积折线图、LCOE 平价带、热力学散点图，在 PPTD 中只能依赖外部 Python/matplotlib 脚本生成高分辨率 PNG，再通过 `elementType: image` 导入。用户在 PowerPoint 中无法双击编辑底层数据。
    - *建议*：未来打通 `elementType: chart`，生成原生 OOXML `<c:chartSpace>`。
-3. **公式对暗色模式（Dark Themes）的自适应不足**：
-   - *痛点*：LaTeX 数学公式在编译为 OMML `<m:r>` 时，未能自动继承外层文本框的 `color` 属性（如 `#F8FAFC`），默认输出纯黑文字，导致暗色背景上公式完全“隐形”。在城市热岛（10b）工程中不得不回退至富文本 Unicode 符号排版。
-   - *建议*：在 `math.rs` 中将当前段落的有效前景色透传至 `<m:rPr><a:solidFill>`。
+3. **公式对暗色模式（Dark Themes）的颜色继承（已于 v1.4.2 修复，仅留 LibreOffice 渲染边界）**：
+   - *现状*：编译器已通过 `math::apply_text_color`（见 §3 缺陷 8c）将外层文本框的有效 `color` 透传至每个 OMML `<m:r>` 的 `<a:rPr><a:solidFill>`，在 PowerPoint / WPS 中暗色背景公式已可正常着浅色。
+   - *残留边界*：LibreOffice 的 OMML 导入仍忽略 run 级颜色并按默认黑色渲染，因此 10b 城市热岛工程在无头预览中保留了富文本 Unicode 符号方案。

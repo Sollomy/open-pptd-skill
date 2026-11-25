@@ -193,7 +193,7 @@ fn render_group(
     xml.start("p:grpSpPr", &[]);
     group_xfrm(xml, &def.xfrm);
     if let Some(fill) = &def.fill {
-        fill_xml(xml, None, fill, None)?;
+        fill_xml(xml, ctx.theme, fill, None)?;
     }
     xml.end("p:grpSpPr");
     let mut i = start;
@@ -283,15 +283,20 @@ fn is_descendant(
     id: &str,
     ancestor: &str,
 ) -> bool {
-    let g = match groups.and_then(|m| m.get(id)) {
-        Some(g) => g,
-        None => return false,
+    let Some(map) = groups else {
+        return false;
     };
-    match &g.parent {
-        Some(p) if p == ancestor => true,
-        Some(p) => is_descendant(groups, p, ancestor),
-        None => false,
+    let mut cur = id;
+    for _ in 0..map.len() {
+        let Some(parent) = map.get(cur).and_then(|g| g.parent.as_deref()) else {
+            return false;
+        };
+        if parent == ancestor {
+            return true;
+        }
+        cur = parent;
     }
+    false
 }
 
 /// px → EMU (1px = 1pt = 12700 EMU).
@@ -606,17 +611,10 @@ pub fn render_layout_placeholder(
         .style
         .as_deref()
         .and_then(|s| theme.and_then(|t| t.text_styles.get(s.trim_start_matches('$'))));
-    // Resolve any `$key` theme color reference to a hex literal so the
-    // emitted `<a:srgbClr>` is valid OOXML (a raw `$primary` would be
-    // rejected). Falls back to the raw value if the theme can't resolve it.
-    let raw_color = def
+    let color = def
         .color
         .clone()
         .or_else(|| base.and_then(|b| b.color.clone()));
-    let color = raw_color
-        .as_ref()
-        .and_then(|c| resolve_color(theme, c).ok().map(|rc| Color(rc.rgb)))
-        .or(raw_color);
     let style = EffTextStyle {
         color,
         font_size: def.font_size.or_else(|| base.and_then(|b| b.font_size)),
@@ -649,7 +647,7 @@ pub fn render_layout_placeholder(
 
     xml.start("p:txBody", &[]);
     xml.leaf("a:bodyPr", &[]);
-    emit_lst_style(xml, &style, true, ctx.safe_fonts);
+    emit_lst_style(xml, theme, &style, true, ctx.safe_fonts);
     xml.leaf("a:p", &[]);
     xml.end("p:txBody");
     xml.end("p:sp");
@@ -775,12 +773,65 @@ fn emit_bullet(xml: &mut Xml, style: &EffTextStyle) {
     }
 }
 
+/// Emit `<a:bodyPr>` with insets, wrap, anchor, direction, extras and autofit.
+fn emit_body_pr(xml: &mut Xml, style: &EffTextStyle, anchor: &str) {
+    let wrap = if style.wrap == Some(false) {
+        "none"
+    } else {
+        "square"
+    };
+    let ins = |v: Option<f64>| -> String { emu(v.unwrap_or(0.0)).to_string() };
+    let mut bpr_v: Vec<String> = vec![
+        ins(style.margin_left),
+        ins(style.margin_right),
+        ins(style.margin_top),
+        ins(style.margin_bottom),
+        wrap.to_string(),
+        "0".to_string(),
+        anchor.to_string(),
+    ];
+    let mut bpr_k: Vec<&str> = vec!["lIns", "rIns", "tIns", "bIns", "wrap", "rtlCol", "anchor"];
+    // textDirection: vertical emits vert on a:bodyPr (prefer eaVert per requirement 6)
+    if style.direction == Some(TextDirection::Vertical) {
+        bpr_k.push("vert");
+        bpr_v.push("eaVert".to_string());
+    }
+    if let Some(extras) = &style.body_pr_extras {
+        for (k, v) in extras {
+            bpr_k.push(k.as_str());
+            bpr_v.push(v.clone());
+        }
+    }
+    let bpr_attrs: Vec<(&str, &str)> = bpr_k
+        .into_iter()
+        .zip(bpr_v.iter().map(String::as_str))
+        .collect();
+    xml.start("a:bodyPr", &bpr_attrs);
+    match style.autofit {
+        Some(TextAutofit::FitShape) => xml.leaf("a:spAutoFit", &[]),
+        Some(TextAutofit::FitText) => xml.leaf("a:normAutofit", &[]),
+        Some(TextAutofit::Fixed) => xml.leaf("a:noAutofit", &[]),
+        // No autofit declared: OOXML means "do not autofit" (text overflows
+        // rather than shrinking). Emitting `normAutofit` here silently changed
+        // the semantics of every converted deck — PowerPoint would shrink text
+        // on overflow where the source kept its declared size.
+        None => {}
+    }
+    xml.end("a:bodyPr");
+}
+
 /// Emit `<a:lstStyle>` for a placeholder. Plain text boxes get an empty
 /// `<a:lstStyle/>`; placeholders get a `<a:lvl1pPr>` rebuilt from the
 /// effective style (algn/lnSpc/spcBef/defRPr) so slide placeholders inherit
 /// the layout/master text style (font/size/colour/bold/align/spacing) —
 /// e.g. an empty slide title shows the layout's prompt in blue/bold 24pt.
-fn emit_lst_style(xml: &mut Xml, style: &EffTextStyle, is_placeholder: bool, safe_fonts: bool) {
+fn emit_lst_style(
+    xml: &mut Xml,
+    theme: Option<&Theme>,
+    style: &EffTextStyle,
+    is_placeholder: bool,
+    safe_fonts: bool,
+) {
     if !is_placeholder {
         xml.leaf("a:lstStyle", &[]);
         return;
@@ -805,7 +856,12 @@ fn emit_lst_style(xml: &mut Xml, style: &EffTextStyle, is_placeholder: bool, saf
     if style.italic == Some(true) {
         rpr_attrs.push(("i", "1"));
     }
-    let has_rpr = !rpr_attrs.is_empty() || style.color.is_some() || style.font_family.is_some();
+    let resolved_color = style
+        .color
+        .as_ref()
+        .and_then(|c| resolve_color(theme, c).ok());
+    let has_rpr =
+        !rpr_attrs.is_empty() || resolved_color.is_some() || style.font_family.is_some();
     let has_anything = algn.is_some() || style.line_height.is_some() || has_rpr;
     if !has_anything {
         // No style info → empty lstStyle so the placeholder inherits the
@@ -827,10 +883,8 @@ fn emit_lst_style(xml: &mut Xml, style: &EffTextStyle, is_placeholder: bool, saf
     }
     if has_rpr {
         xml.start("a:defRPr", &rpr_attrs);
-        if let Some(c) = &style.color {
-            xml.start("a:solidFill", &[]);
-            xml.leaf("a:srgbClr", &[("val", c.0.trim_start_matches('#'))]);
-            xml.end("a:solidFill");
+        if let Some(resolved) = &resolved_color {
+            emit_fill_color(xml, resolved);
         }
         if let Some(f) = &style.font_family {
             match f {
@@ -927,7 +981,7 @@ fn render_text(
     if is_empty_placeholder {
         xml.start("p:txBody", &[]);
         xml.leaf("a:bodyPr", &[]);
-        emit_lst_style(xml, &style, true, ctx.safe_fonts);
+        emit_lst_style(xml, ctx.theme, &style, true, ctx.safe_fonts);
         xml.leaf("a:p", &[]);
         xml.end("p:txBody");
         xml.end("p:sp");
@@ -951,50 +1005,14 @@ fn render_text(
     }
 
     xml.start("p:txBody", &[]);
-    let wrap = if style.wrap == Some(false) {
-        "none"
-    } else {
-        "square"
-    };
-    let ins = |v: Option<f64>| -> String { emu(v.unwrap_or(0.0)).to_string() };
-    let mut bpr_v: Vec<String> = vec![
-        ins(style.margin_left),
-        ins(style.margin_right),
-        ins(style.margin_top),
-        ins(style.margin_bottom),
-        wrap.to_string(),
-        "0".to_string(),
-        anchor.to_string(),
-    ];
-    let mut bpr_k: Vec<&str> = vec!["lIns", "rIns", "tIns", "bIns", "wrap", "rtlCol", "anchor"];
-    // textDirection: vertical emits vert on a:bodyPr (prefer eaVert per requirement 6)
-    if style.direction == Some(TextDirection::Vertical) {
-        bpr_k.push("vert");
-        bpr_v.push("eaVert".to_string());
-    }
-    if let Some(extras) = &style.body_pr_extras {
-        for (k, v) in extras {
-            bpr_k.push(k.as_str());
-            bpr_v.push(v.clone());
-        }
-    }
-    let bpr_attrs: Vec<(&str, &str)> = bpr_k
-        .into_iter()
-        .zip(bpr_v.iter().map(String::as_str))
-        .collect();
-    xml.start("a:bodyPr", &bpr_attrs);
-    match style.autofit {
-        Some(TextAutofit::FitShape) => xml.leaf("a:spAutoFit", &[]),
-        Some(TextAutofit::FitText) => xml.leaf("a:normAutofit", &[]),
-        Some(TextAutofit::Fixed) => xml.leaf("a:noAutofit", &[]),
-        // No autofit declared: OOXML means "do not autofit" (text overflows
-        // rather than shrinking). Emitting `normAutofit` here silently changed
-        // the semantics of every converted deck — PowerPoint would shrink text
-        // on overflow where the source kept its declared size.
-        None => {}
-    }
-    xml.end("a:bodyPr");
-    emit_lst_style(xml, &style, text.placeholder.is_some(), ctx.safe_fonts);
+    emit_body_pr(xml, &style, anchor);
+    emit_lst_style(
+        xml,
+        ctx.theme,
+        &style,
+        text.placeholder.is_some(),
+        ctx.safe_fonts,
+    );
 
     // Plain text: every line becomes one paragraph (the `<p>` equivalence).
     let sz = (style.font_size.unwrap_or(18.0) * 100.0)
@@ -1089,11 +1107,13 @@ fn css_value<'a>(pairs: &'a [(String, String)], key: &str) -> Option<&'a str> {
         .map(|(_, v)| v.as_str())
 }
 
-/// `24px` → 24.0; bare numbers stay numbers.
+/// `24px` or `24pt` → 24.0; bare numbers stay numbers.
 fn css_px(value: &str) -> Option<f64> {
-    value
+    let trimmed = value.trim();
+    trimmed
         .strip_suffix("px")
-        .unwrap_or(value)
+        .or_else(|| trimmed.strip_suffix("pt"))
+        .unwrap_or(trimmed)
         .trim()
         .parse::<f64>()
         .ok()
@@ -1133,12 +1153,34 @@ fn parse_rich(text: &str) -> Vec<RichPara> {
         }
     }
 
+    fn find_p_open(s: &str) -> Option<usize> {
+        let mut offset = 0;
+        while let Some(rel) = s[offset..].find("<p") {
+            let idx = offset + rel;
+            let after = s.as_bytes().get(idx + 2);
+            if after.is_some_and(|b| *b == b'>' || *b == b'/' || b.is_ascii_whitespace()) {
+                return Some(idx);
+            }
+            offset = idx + 2;
+        }
+        None
+    }
+
     let mut paras: Vec<RichPara> = Vec::new();
     let mut pos = 0usize;
     loop {
         let remaining = &text[pos..];
-        let Some(p_start) = remaining.find("<p") else {
+        let Some(p_start) = find_p_open(remaining) else {
             // Remaining plain text: line-based paragraphs.
+            for line in remaining.split('\n') {
+                if !line.trim().is_empty() {
+                    paras.push(plain_para(line));
+                }
+            }
+            break;
+        };
+        let Some(gt_rel) = remaining[p_start + 2..].find('>') else {
+            // Unclosed `<p` without `>`: treat the rest as plain text instead of panicking.
             for line in remaining.split('\n') {
                 if !line.trim().is_empty() {
                     paras.push(plain_para(line));
@@ -1153,12 +1195,11 @@ fn parse_rich(text: &str) -> Vec<RichPara> {
             }
         }
         let tag_start = pos + p_start + 2;
-        let gt_rel = remaining[p_start + 2..]
-            .find('>')
-            .unwrap_or(remaining[p_start + 2..].len());
         let gt = tag_start + gt_rel;
+        let raw_attr = text[tag_start..gt].trim();
+        let self_closing = raw_attr.ends_with('/');
         // `<p style="...">` — tolerate the space after the tag name.
-        let style_attr = text[tag_start..gt].trim();
+        let style_attr = raw_attr.trim_end_matches('/').trim();
         let style = style_attr
             .strip_prefix("style=\"")
             .and_then(|s| s.strip_suffix('\"'))
@@ -1166,7 +1207,7 @@ fn parse_rich(text: &str) -> Vec<RichPara> {
         let pairs = css_pairs(style);
         let align = css_value(&pairs, "text-align").and_then(css_align);
         let line_height = css_value(&pairs, "line-height").and_then(|v| {
-            if v.contains("px") {
+            if v.contains("px") || v.contains("pt") {
                 None
             } else {
                 v.parse::<f64>().ok()
@@ -1174,9 +1215,27 @@ fn parse_rich(text: &str) -> Vec<RichPara> {
         });
         let line_height_px = css_value(&pairs, "line-height")
             .and_then(css_px)
-            .filter(|_| css_value(&pairs, "line-height").is_some_and(|v| v.contains("px")));
+            .filter(|_| {
+                css_value(&pairs, "line-height")
+                    .is_some_and(|v| v.contains("px") || v.contains("pt"))
+            });
         let margin_top_px = css_value(&pairs, "margin-top").and_then(css_px);
         let margin_bottom_px = css_value(&pairs, "margin-bottom").and_then(css_px);
+        if self_closing {
+            paras.push(RichPara {
+                align,
+                line_height,
+                line_height_px,
+                margin_top_px,
+                margin_bottom_px,
+                items: Vec::new(),
+            });
+            pos = gt + 1;
+            if pos >= text.len() {
+                break;
+            }
+            continue;
+        }
         let close_rel = text[gt + 1..].find("</p>").unwrap_or(text[gt + 1..].len());
         let close = gt + 1 + close_rel;
         paras.push(RichPara {
@@ -1529,50 +1588,8 @@ pub(crate) fn render_rich_body(
 ) -> Result<()> {
     let theme = ctx.theme;
     let safe_fonts = ctx.safe_fonts;
-    // Box-level defaults (shared with the plain-text path).
-    let wrap = if style.wrap == Some(false) {
-        "none"
-    } else {
-        "square"
-    };
-    let ins = |v: Option<f64>| -> String { emu(v.unwrap_or(0.0)).to_string() };
-    let mut bpr_v: Vec<String> = vec![
-        ins(style.margin_left),
-        ins(style.margin_right),
-        ins(style.margin_top),
-        ins(style.margin_bottom),
-        wrap.to_string(),
-        "0".to_string(),
-        anchor.to_string(),
-    ];
-    let mut bpr_k: Vec<&str> = vec!["lIns", "rIns", "tIns", "bIns", "wrap", "rtlCol", "anchor"];
-    if style.direction == Some(TextDirection::Vertical) {
-        bpr_k.push("vert");
-        bpr_v.push("eaVert".to_string());
-    }
-    if let Some(extras) = &style.body_pr_extras {
-        for (k, v) in extras {
-            bpr_k.push(k.as_str());
-            bpr_v.push(v.clone());
-        }
-    }
-    let bpr_attrs: Vec<(&str, &str)> = bpr_k
-        .into_iter()
-        .zip(bpr_v.iter().map(String::as_str))
-        .collect();
-    xml.start("a:bodyPr", &bpr_attrs);
-    match style.autofit {
-        Some(TextAutofit::FitShape) => xml.leaf("a:spAutoFit", &[]),
-        Some(TextAutofit::FitText) => xml.leaf("a:normAutofit", &[]),
-        Some(TextAutofit::Fixed) => xml.leaf("a:noAutofit", &[]),
-        // No autofit declared: OOXML means "do not autofit" (text overflows
-        // rather than shrinking). Emitting `normAutofit` here silently changed
-        // the semantics of every converted deck — PowerPoint would shrink text
-        // on overflow where the source kept its declared size.
-        None => {}
-    }
-    xml.end("a:bodyPr");
-    emit_lst_style(xml, style, is_placeholder, safe_fonts);
+    emit_body_pr(xml, style, anchor);
+    emit_lst_style(xml, theme, style, is_placeholder, safe_fonts);
 
     for para in parse_rich(text) {
         xml.start("a:p", &[]);
@@ -2211,8 +2228,8 @@ fn render_line(xml: &mut Xml, ctx: &mut RenderCtx<'_>, line: &Line) -> Result<()
         } else {
             line.common.bounds.height
         };
-        let path_w = (pw.round() as i64).to_string();
-        let path_h = (ph.round() as i64).to_string();
+        let path_w = emu(pw).max(1).to_string();
+        let path_h = emu(ph).max(1).to_string();
         xml.start("a:custGeom", &[]);
         xml.leaf("a:avLst", &[]);
         xml.leaf("a:gdLst", &[]);
@@ -2223,8 +2240,8 @@ fn render_line(xml: &mut Xml, ctx: &mut RenderCtx<'_>, line: &Line) -> Result<()
         xml.start("a:path", &[("w", &path_w), ("h", &path_h)]);
 
         let (first, rest) = points.split_first().expect("len >= 2 checked above");
-        let first_x = (first.0.round() as i64).to_string();
-        let first_y = (first.1.round() as i64).to_string();
+        let first_x = emu(first.0).to_string();
+        let first_y = emu(first.1).to_string();
         xml.start("a:moveTo", &[]);
         xml.leaf("a:pt", &[("x", &first_x), ("y", &first_y)]);
         xml.end("a:moveTo");
@@ -2245,8 +2262,8 @@ fn render_line(xml: &mut Xml, ctx: &mut RenderCtx<'_>, line: &Line) -> Result<()
             }
         } else {
             for (x, y) in rest {
-                let x = (x.round() as i64).to_string();
-                let y = (y.round() as i64).to_string();
+                let x = emu(*x).to_string();
+                let y = emu(*y).to_string();
                 xml.start("a:lnTo", &[]);
                 xml.leaf("a:pt", &[("x", &x), ("y", &y)]);
                 xml.end("a:lnTo");
@@ -2473,22 +2490,34 @@ fn render_image(xml: &mut Xml, ctx: &mut RenderCtx<'_>, image: &Image) -> Result
         image.common.flip,
     );
     match &image.crop_shape {
+        Some(shape) if shape.shape_name == "custom" => {
+            let path = shape.path.as_deref().ok_or_else(|| {
+                Error::Invalid(format!(
+                    "image `{}` has custom cropShape without `path`",
+                    image.common.element_id
+                ))
+            })?;
+            let view_box = shape
+                .view_box
+                .unwrap_or((image.common.bounds.width, image.common.bounds.height));
+            let w = (view_box.0.round() as i64).to_string();
+            let h = (view_box.1.round() as i64).to_string();
+            xml.start("a:custGeom", &[]);
+            emit_adjustments(xml, shape.adjustments.as_deref());
+            xml.leaf("a:gdLst", &[]);
+            xml.leaf("a:ahLst", &[]);
+            xml.leaf("a:cxnLst", &[]);
+            xml.leaf("a:rect", &[("l", "0"), ("t", "0"), ("r", &w), ("b", &h)]);
+            xml.start("a:pathLst", &[]);
+            xml.start("a:path", &[("w", &w), ("h", &h)]);
+            svg_path::emit_path_children(xml, path)?;
+            xml.end("a:path");
+            xml.end("a:pathLst");
+            xml.end("a:custGeom");
+        }
         Some(shape) => {
             xml.start("a:prstGeom", &[("prst", &shape.shape_name)]);
-            xml.start("a:avLst", &[]);
-            if let Some(adjustments) = &shape.adjustments {
-                for (i, &adj) in adjustments.iter().take(10).enumerate() {
-                    let adj_name = if i == 0 {
-                        "adj".to_owned()
-                    } else {
-                        format!("adj{}", i + 1)
-                    };
-                    let value = (adj.round() as i64).to_string();
-                    let fmla = format!("val {value}");
-                    xml.leaf("a:gd", &[("name", &adj_name), ("fmla", &fmla)]);
-                }
-            }
-            xml.end("a:avLst");
+            emit_adjustments(xml, shape.adjustments.as_deref());
             xml.end("a:prstGeom");
         }
         None => {
@@ -2563,9 +2592,9 @@ fn render_media(xml: &mut Xml, ctx: &mut RenderCtx<'_>, m: &Media, kind: &str) -
     xml.start("p:nvPr", &[]);
     xml.leaf(av_element, &[("r:link", &media_rid)]);
     // PowerPoint 2010+ extension: marks the pic as a true media object.
-    xml.start("a:extLst", &[]);
+    xml.start("p:extLst", &[]);
     xml.start(
-        "a:ext",
+        "p:ext",
         &[("uri", "{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}")],
     );
     xml.start(
@@ -2579,8 +2608,8 @@ fn render_media(xml: &mut Xml, ctx: &mut RenderCtx<'_>, m: &Media, kind: &str) -
         ],
     );
     xml.end("p14:media");
-    xml.end("a:ext");
-    xml.end("a:extLst");
+    xml.end("p:ext");
+    xml.end("p:extLst");
     xml.end("p:nvPr");
     xml.end("p:nvPicPr");
 

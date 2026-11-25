@@ -277,6 +277,10 @@ fn arc_to_cubics(
     sweep: bool,
     (x2, y2): (f64, f64),
 ) -> Vec<[(f64, f64); 3]> {
+    if (x1 - x2).abs() < 1e-12 && (y1 - y2).abs() < 1e-12 {
+        return Vec::new();
+    }
+
     let phi = rot_deg.to_radians();
     let (sin_p, cos_p) = phi.sin_cos();
 
@@ -318,19 +322,16 @@ fn arc_to_cubics(
     let step = delta / n as f64;
     let k = (4.0 / 3.0) * (step * 0.25).tan();
 
+    let to_world = |(lx, ly): (f64, f64)| -> (f64, f64) {
+        (cos_p * lx - sin_p * ly + cx, sin_p * lx + cos_p * ly + cy)
+    };
     let mut out = Vec::with_capacity(n);
     let mut t = theta1;
     for _ in 0..n {
         let t1 = t + step;
-        let c1 = (
-            cx + rx * (t.cos() - k * t.sin()),
-            cy + ry * (t.sin() + k * t.cos()),
-        );
-        let c2 = (
-            cx + rx * (t1.cos() + k * t1.sin()),
-            cy + ry * (t1.sin() - k * t1.cos()),
-        );
-        let e = (cx + rx * t1.cos(), cy + ry * t1.sin());
+        let c1 = to_world((rx * (t.cos() - k * t.sin()), ry * (t.sin() + k * t.cos())));
+        let c2 = to_world((rx * (t1.cos() + k * t1.sin()), ry * (t1.sin() - k * t1.cos())));
+        let e = to_world((rx * t1.cos(), ry * t1.sin()));
         out.push([c1, c2, e]);
         t = t1;
     }
@@ -500,6 +501,52 @@ mod tests {
         assert!(matches!(segs[0], Seg::MoveTo((0.0, 256.0))));
         let end = segs.last().unwrap();
         assert!(matches!(end, Seg::Close), "ring must close");
+    }
+
+    #[test]
+    fn rotated_arc_preserves_endpoints_and_orientation() {
+        // 90-degree rotated ellipse (rx=100, ry=50) centered at (0,0):
+        // (0,100) -> (-50,0) -> (0,-100).
+        let segs = parse("M0 100A100 50 90 0 1 0 -100").unwrap();
+        let cubics: Vec<_> = segs
+            .iter()
+            .filter_map(|s| match s {
+                Seg::Cubic(pts) => Some(*pts),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(cubics.len(), 2);
+        let mid = cubics[0][2];
+        assert!(
+            (mid.0 - (-50.0)).abs() < 1e-6 && mid.1.abs() < 1e-6,
+            "midpoint of 90°-rotated arc should be (-50, 0), got {mid:?}"
+        );
+        let end = cubics[1][2];
+        assert!(
+            end.0.abs() < 1e-6 && (end.1 - (-100.0)).abs() < 1e-6,
+            "endpoint of 90°-rotated arc should be (0, -100), got {end:?}"
+        );
+
+        // 45-degree rotated arc must also land cleanly on its declared endpoint.
+        let segs45 = parse("M0 0A80 40 45 0 1 100 0").unwrap();
+        let last = segs45
+            .iter()
+            .filter_map(|s| match s {
+                Seg::Cubic(pts) => Some(pts[2]),
+                _ => None,
+            })
+            .next_back()
+            .expect("rotated arc cubics");
+        assert!(
+            (last.0 - 100.0).abs() < 1e-6 && last.1.abs() < 1e-6,
+            "45°-rotated arc must end at (100, 0), got {last:?}"
+        );
+    }
+
+    #[test]
+    fn zero_length_arc_emits_no_cubics_or_nans() {
+        let segs = parse("M10 20A50 30 45 0 1 10 20").unwrap();
+        assert_eq!(segs, vec![Seg::MoveTo((10.0, 20.0))]);
     }
 
     #[test]

@@ -10,7 +10,7 @@ npx skills add https://github.com/shiquda/open-pptd-skill -g -y -a codex
 
 This example installs for Codex; replace `codex` with your agent's skills identifier.
 
-Skill installation requires a network connection; builds and conversions run offline once the local `pptd` compiler is ready. [Full setup](#-quick-setup-agent-first-installation-recommended) · [Syntax and boundaries](skills/open-pptd/reference/pptd.md) · [MIT license](LICENSE) / [Third-party notices](NOTICE)
+Skill installation requires a network connection; builds and conversions run offline once the local `pptd` compiler is ready. [Full setup](#-quick-setup-agent-first-installation-recommended) · [Syntax and boundaries](skills/open-pptd/reference/pptd.md) · [GNU AGPL v3.0+ license](LICENSE) / [Third-party notices](NOTICE)
 
 [![Editable Xiaomi YU7 slides generated from PPTD, shown in PowerPoint](docs/images/example-yu7-pptx.png)](example/yu7-ppt/)
 
@@ -197,7 +197,7 @@ Outputs land in each deck's `build/` (git-ignored). Defect log and known boundar
 
 ## 📄 License & Attribution
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [GNU Affero General Public License v3.0 or later (`AGPL-3.0-or-later`)](LICENSE). Upstream MIT copyright and permission notices are preserved in [LICENSE-MIT](LICENSE-MIT) and [NOTICE](NOTICE).
 
 ### Acknowledgements & Upstream Projects:
 1. **`open-kimi-ppt-skill`**:

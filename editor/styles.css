@@ -109,8 +109,8 @@ button {
   transition: 150ms ease;
 }
 
-.button:hover,
-.icon-button:hover {
+.button:hover:not(:disabled),
+.icon-button:hover:not(:disabled) {
   border-color: #cfd5e1;
   background: #f7f8fb;
   transform: translateY(-1px);
@@ -118,7 +118,9 @@ button {
 
 .button:focus-visible,
 .icon-button:focus-visible,
-.deck-option:focus-visible {
+.deck-option:focus-visible,
+.upload-dropzone:focus-visible,
+.open-choice:focus-visible {
   outline: 3px solid rgba(108, 92, 231, 0.24);
   outline-offset: 2px;
 }
@@ -145,7 +147,7 @@ button {
   box-shadow: 0 5px 13px rgba(108, 92, 231, 0.18);
 }
 
-.button-primary:hover {
+.button-primary:hover:not(:disabled) {
   border-color: var(--purple-dark);
   background: var(--purple-dark);
 }
@@ -321,6 +323,7 @@ button {
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.98);
   box-shadow: var(--shadow);
+  visibility: hidden;
   opacity: 0;
   pointer-events: none;
   transform: translateX(calc(100% + 24px));
@@ -328,6 +331,7 @@ button {
 }
 
 .activity-panel.is-open {
+  visibility: visible;
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);

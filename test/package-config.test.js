@@ -20,3 +20,10 @@ test("package.json files includes skills/open-pptd/theme_previews/", () => {
     "package.json files must include skills/open-pptd/theme_previews/",
   );
 });
+
+test("package.json files includes editor/ so serve works when installed from npm", () => {
+  assert(
+    packageJson.files.includes("editor/"),
+    "package.json files must include editor/",
+  );
+});

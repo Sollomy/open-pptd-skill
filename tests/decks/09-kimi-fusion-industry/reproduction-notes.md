@@ -23,7 +23,7 @@ iterations each page needed, and where fidelity to the Kimi K3 benchmark was tra
 | Animation | ❌ not used | out of scope for a static research deck |
 | `pptd check` overflow estimation | ⚠️ false positives | 7 single-line titles flagged as 51% over (README §4/D1) |
 | `pptd check` / `build` / `validate` / render loop | ✅ works end-to-end | final state: check 7 warnings → build OK → validate PASS 16/16 → render OK |
-| Validator `--render-images` idempotency | ❌ does not overwrite stale PNGs | README §4/D5 |
+| Validator `--render-images` idempotency | ✅ resolved in v1.4.2 (was ❌ stale PNGs) | README §4/D5; `validate_pptx.py` now clears old `slide-*.png` before rendering |
 
 ## Per-page log
 
@@ -65,5 +65,5 @@ iterations each page needed, and where fidelity to the Kimi K3 benchmark was tra
 2. `elementType: chart` is rejected by the *parser* (`missing field cols/series`) before the documented `Unsupported` path is ever reached (README D2).
 3. `size:` rejects the map form with a Rust-serde message that never names the correct syntax (README D3).
 4. `pptd build` prints no progress/page summary — only a sync-point hash (README D4).
-5. The validator's `--render-images` never overwrites existing `slide-NN.png`; stale previews are an easy sign-off trap (README D5).
+5. The validator's `--render-images` never overwrites existing `slide-NN.png`; stale previews are an easy sign-off trap (README D5) — **resolved in v1.4.2** (`validate_pptx.py` now clears stale PNGs before rendering).
 6. Display math (`oMathPara`) DOES carry an `mc:AlternateContent` fallback — an earlier "blank box" hypothesis was disproven by a minimal repro (README D6).

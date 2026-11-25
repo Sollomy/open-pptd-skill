@@ -15,58 +15,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 from typing import Optional, Sequence
 
-from export_pptx import export_pptx
-
-
-def build_contact_sheet(image_paths: list[Path], output_path: Path, cols: int = 5) -> Optional[Path]:
-    """Generate a multi-page overview contact sheet grid using Pillow."""
-    if not image_paths:
-        return None
-    try:
-        from PIL import Image
-    except ImportError:
-        print("[open-pptd-skill] PIL/Pillow not installed; skipping overview contact sheet generation.", file=sys.stderr)
-        return None
-
-    try:
-        first_im = Image.open(image_paths[0])
-        w, h = first_im.size
-        thumb_w = 400
-        thumb_h = max(1, int(thumb_w * h / w))
-        pad = 20
-
-        n = len(image_paths)
-        actual_cols = min(cols, n)
-        rows = (n + actual_cols - 1) // actual_cols
-
-        total_w = actual_cols * thumb_w + (actual_cols + 1) * pad
-        total_h = rows * thumb_h + (rows + 1) * pad
-
-        grid = Image.new("RGB", (total_w, total_h), "#EFECE1")
-
-        for idx, img_p in enumerate(image_paths):
-            im = Image.open(img_p).convert("RGB")
-            im_resized = im.resize((thumb_w, thumb_h), Image.Resampling.LANCZOS)
-            r = idx // actual_cols
-            c = idx % actual_cols
-            x = pad + c * (thumb_w + pad)
-            y = pad + r * (thumb_h + pad)
-            grid.paste(im_resized, (x, y))
-
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        grid.save(output_path, "JPEG", quality=90)
-        print(f"[open-pptd-skill] Generated contact sheet: {output_path}")
-        return output_path
-    except Exception as e:
-        print(f"[open-pptd-skill] Failed to generate contact sheet: {e}", file=sys.stderr)
-        return None
-
+from export_pptx import export_pptx, find_manifest
+from validate_pptx import build_contact_sheet
 
 build_montage = build_contact_sheet
+
+
 def export_images(
     source: Path,
     out_dir: Optional[Path] = None,
@@ -88,11 +45,18 @@ def export_images(
         tmp_pptx = tmp_dir / "render.pptx"
 
         # Isolate deck directory inside tmp_dir so .sync.hash is never written to user's deck directory
-        from export_pptx import find_manifest
         manifest = find_manifest(source)
         source_dir = manifest.parent.resolve()
         tmp_deck_dir = tmp_dir / "deck"
-        shutil.copytree(source_dir, tmp_deck_dir, ignore=shutil.ignore_patterns(".*", "*.pptx"))
+        base_ignore = shutil.ignore_patterns(".*", "*.pptx")
+
+        def _ignore(dirpath: str, names: list[str]) -> set[str]:
+            ignored = set(base_ignore(dirpath, names))
+            if Path(dirpath).resolve() == out_dir.parent and out_dir.name in names:
+                ignored.add(out_dir.name)
+            return ignored
+
+        shutil.copytree(source_dir, tmp_deck_dir, ignore=_ignore)
         isolated_manifest = tmp_deck_dir / manifest.name
 
         export_pptx(isolated_manifest, output=tmp_pptx, force=force, pptd_bin=pptd_bin)
@@ -116,6 +80,19 @@ def export_images(
             capture_output=True,
         )
         tmp_pdf = tmp_dir / "render.pdf"
+
+        # Clean previous renders to avoid stale slides and double-counting in glob
+        for old in out_dir.glob("slide-*.png"):
+            try:
+                old.unlink()
+            except OSError:
+                pass
+        old_cs = out_dir / "contact-sheet.jpg"
+        if old_cs.is_file():
+            try:
+                old_cs.unlink()
+            except OSError:
+                pass
 
         # Rasterize PDF to slide-NN.png directly into out_dir
         print(f"[open-pptd-skill] Rasterizing slides at {dpi} DPI...")
@@ -161,7 +138,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("source", type=Path, help="Path to deck.pptd manifest or project directory")
     parser.add_argument("-o", "--output", type=Path, default=None, help="Output directory for images (default: qa-images)")
     parser.add_argument("--dpi", type=int, default=150, help="Image DPI (default: 150)")
-    parser.add_argument("--force", action="store_true", default=True, help="Force overwrite bypassing .sync.hash protection")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite bypassing .sync.hash protection")
     parser.add_argument("--compiler", type=Path, default=None, help="Explicit path to pptd binary")
     args = parser.parse_args(argv)
 

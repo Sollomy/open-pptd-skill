@@ -95,7 +95,14 @@ impl<'a> PptxWriter<'a> {
         {
             return Err(Error::Validation(issue.to_string()));
         }
+        self.build_validated(output)
+    }
 
+    /// Render an already-validated `project` into an OPC/ZIP package at `output`.
+    ///
+    /// Intended for callers (such as the CLI) that have already run
+    /// [`validate_project`] and checked for errors.
+    pub fn build_validated(&self, output: &Path) -> Result<()> {
         let (mut entries, media_extensions) = self.collect_entries()?;
         let content_types = content_types_xml(&entries, &media_extensions);
         entries.insert(
@@ -913,18 +920,21 @@ fn slide_master_xml(layout_count: usize, theme: Option<&Theme>) -> String {
     emit_tx_style(
         &mut x,
         "p:titleStyle",
+        theme,
         theme.and_then(|t| t.text_styles.get("title")),
         "4400",
     );
     emit_tx_style(
         &mut x,
         "p:bodyStyle",
+        theme,
         theme.and_then(|t| t.text_styles.get("body")),
         "1800",
     );
     emit_tx_style(
         &mut x,
         "p:otherStyle",
+        theme,
         theme.and_then(|t| t.text_styles.get("other")),
         "1800",
     );
@@ -939,7 +949,13 @@ fn slide_master_xml(layout_count: usize, theme: Option<&Theme>) -> String {
 /// these defaults per the OOXML chain — the default run size and line
 /// spacing must match the source deck or placeholder text (e.g. a subtitle)
 /// re-measures its line pitch differently in every consumer.
-fn emit_tx_style(x: &mut Xml, name: &str, style: Option<&TextStyleConfig>, fallback_sz: &str) {
+fn emit_tx_style(
+    x: &mut Xml,
+    name: &str,
+    theme: Option<&Theme>,
+    style: Option<&TextStyleConfig>,
+    fallback_sz: &str,
+) {
     x.start(name, &[]);
     x.start("a:lvl1pPr", &[]);
     if let Some(lh) = style.and_then(|s| s.line_height) {
@@ -962,10 +978,20 @@ fn emit_tx_style(x: &mut Xml, name: &str, style: Option<&TextStyleConfig>, fallb
         .map(|pt| ((pt * 100.0).round() as u64).to_string())
         .unwrap_or_else(|| fallback_sz.to_string());
     x.start("a:defRPr", &[("sz", &sz_hundredths)]);
-    match style.and_then(|s| s.color.as_ref()) {
-        Some(c) => {
+    match style
+        .and_then(|s| s.color.as_ref())
+        .and_then(|c| crate::pptx::theme::resolve_color(theme, c).ok())
+    {
+        Some(resolved) => {
             x.start("a:solidFill", &[]);
-            x.leaf("a:srgbClr", &[("val", c.0.trim_start_matches('#'))]);
+            if let Some(alpha) = resolved.alpha {
+                let val = ((alpha * 100000.0).round() as u64).to_string();
+                x.start("a:srgbClr", &[("val", &resolved.rgb)]);
+                x.leaf("a:alpha", &[("val", &val)]);
+                x.end("a:srgbClr");
+            } else {
+                x.leaf("a:srgbClr", &[("val", &resolved.rgb)]);
+            }
             x.end("a:solidFill");
         }
         None => {
@@ -1093,6 +1119,20 @@ fn layout_xml(
             ("xmlns:p", ns::PRESENTATIONML),
             ("xmlns:a", ns::DRAWINGML),
             ("xmlns:r", ns::RELATIONSHIPS),
+            ("xmlns:pptd", ns::PPTD),
+            (
+                "xmlns:a14",
+                "http://schemas.microsoft.com/office/drawing/2010/main",
+            ),
+            (
+                "xmlns:m",
+                "http://schemas.openxmlformats.org/officeDocument/2006/math",
+            ),
+            (
+                "xmlns:mc",
+                "http://schemas.openxmlformats.org/markup-compatibility/2006",
+            ),
+            ("mc:Ignorable", "a14"),
             ("type", "blank"),
             ("preserve", "1"),
         ],

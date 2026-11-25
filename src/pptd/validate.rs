@@ -121,10 +121,8 @@ fn validate_page(project: &Project, page_idx: usize, page: &Page, out: &mut Vec<
         page_idx,
         out,
         "page background",
+        true,
     );
-    if let Some(Fill::Image { src, .. }) = &page.background {
-        check_image_file(&project.root_dir, src, page_idx, out, "page background");
-    }
     // SlideForge extension: `Page.layout` must reference a key declared in
     // `Presentation.layouts`. Unset pages are canonical (flat) and skipped.
     if let Some(layout_key) = &page.layout {
@@ -144,8 +142,41 @@ fn validate_page(project: &Project, page_idx: usize, page: &Page, out: &mut Vec<
     // TODO(P2): once convert sets `Text.placeholder`, check it resolves against
     // the page's layout placeholders (needs the layout context plumbed in).
 
-    // SlideForge group extension: every `groupId` on an element must
-    // resolve to an entry in `Page.groups`.
+    // SlideForge group extension: validate `Page.groups` parent references and
+    // reject parent cycles, and verify every element's `groupId` resolves.
+    if let Some(groups) = &page.groups {
+        let mut keys: Vec<&String> = groups.keys().collect();
+        keys.sort();
+        for gid in keys {
+            let def = &groups[gid];
+            if let Some(parent) = def.parent.as_deref() {
+                if !groups.contains_key(parent) {
+                    diag(
+                        out,
+                        page_idx,
+                        format!(
+                            "group `{gid}` references parent `{parent}` not defined in page.groups"
+                        ),
+                    );
+                    continue;
+                }
+            }
+            let mut visited: HashSet<&str> = HashSet::new();
+            visited.insert(gid.as_str());
+            let mut cur = def.parent.as_deref();
+            while let Some(p) = cur {
+                if !visited.insert(p) {
+                    diag(
+                        out,
+                        page_idx,
+                        format!("group `{gid}` has a cyclic parent chain"),
+                    );
+                    break;
+                }
+                cur = groups.get(p).and_then(|g| g.parent.as_deref());
+            }
+        }
+    }
     for element in &page.elements {
         if let Some(gid) = element.common().group_id.as_deref() {
             let resolved = page.groups.as_ref().is_some_and(|m| m.contains_key(gid));
@@ -185,14 +216,22 @@ fn validate_page(project: &Project, page_idx: usize, page: &Page, out: &mut Vec<
         let degenerate = if flattened {
             let w = bounds.width;
             let h = bounds.height;
-            !(w.is_finite() && h.is_finite() && (w > 0.0 || h > 0.0))
+            !(w.is_finite() && h.is_finite() && w >= 0.0 && h >= 0.0 && (w > 0.0 || h > 0.0))
         } else {
             !(bounds.width.is_finite()
                 && bounds.height.is_finite()
                 && bounds.width > 0.0
                 && bounds.height > 0.0)
         };
-        if degenerate {
+        if !bounds.x.is_finite() || !bounds.y.is_finite() {
+            diag(
+                out,
+                page_idx,
+                format!(
+                    "element `{element_id}` bounds must have finite coordinates, got {bounds:?}"
+                ),
+            );
+        } else if degenerate {
             diag(
                 out,
                 page_idx,
@@ -282,6 +321,25 @@ fn validate_element(
                 &text.common.element_id,
                 "text background color",
             );
+            if let Some(grad) = &text.content.gradient {
+                for stop in &grad.stops {
+                    check_color(
+                        theme,
+                        Some(&stop.color),
+                        page_idx,
+                        out,
+                        &text.common.element_id,
+                        "text gradient stop color",
+                    );
+                }
+            }
+            check_shadow(
+                theme,
+                text.content.shadow.as_ref(),
+                page_idx,
+                out,
+                &text.common.element_id,
+            );
             check_fill(
                 project,
                 theme,
@@ -289,6 +347,7 @@ fn validate_element(
                 page_idx,
                 out,
                 &text.common.element_id,
+                false,
             );
             check_border(
                 theme,
@@ -297,8 +356,8 @@ fn validate_element(
                 out,
                 &text.common.element_id,
             );
-            check_rich_text_tags(text, page_idx, out);
-            check_latex_commands(text, page_idx, out);
+            check_rich_text_tags(&text.common.element_id, &text.content.text, page_idx, out);
+            check_latex_commands(&text.common.element_id, &text.content.text, page_idx, out);
             check_text_overflow(text, theme, page_idx, out);
         }
         Element::Shape(shape) => {
@@ -310,6 +369,7 @@ fn validate_element(
                 page_idx,
                 out,
                 &shape.common.element_id,
+                false,
             );
             check_border(
                 theme,
@@ -357,6 +417,7 @@ fn validate_element(
                 page_idx,
                 out,
                 &icon.common.element_id,
+                false,
             );
             check_border(
                 theme,
@@ -381,6 +442,17 @@ fn validate_element(
                 out,
                 &image.common.element_id,
             );
+            if let Some(crop) = &image.crop_shape {
+                check_shape_fields(
+                    "image cropShape",
+                    &image.common.element_id,
+                    &crop.shape_name,
+                    crop.view_box.is_some(),
+                    crop.path.is_some(),
+                    page_idx,
+                    out,
+                );
+            }
             check_border(
                 theme,
                 image.border.as_ref(),
@@ -398,8 +470,52 @@ fn validate_element(
         }
         Element::Table(table) => {
             validate_table(page_idx, table, theme, out);
+            check_fill(
+                project,
+                theme,
+                table.fill.as_ref(),
+                page_idx,
+                out,
+                &table.common.element_id,
+                false,
+            );
+            check_shadow(
+                theme,
+                table.shadow.as_ref(),
+                page_idx,
+                out,
+                &table.common.element_id,
+            );
             for row in &table.rows {
                 for cell in row {
+                    if let Some(cell_text) = cell.text.as_deref() {
+                        check_rich_text_tags(&table.common.element_id, cell_text, page_idx, out);
+                        check_latex_commands(&table.common.element_id, cell_text, page_idx, out);
+                    }
+                    check_color(
+                        theme,
+                        cell.color.as_ref(),
+                        page_idx,
+                        out,
+                        &table.common.element_id,
+                        "table cell text color",
+                    );
+                    check_text_style_ref(
+                        theme,
+                        cell.text_style.as_deref(),
+                        page_idx,
+                        out,
+                        format!("table `{}` cell", table.common.element_id),
+                    );
+                    check_fill(
+                        project,
+                        theme,
+                        cell.fill.as_ref(),
+                        page_idx,
+                        out,
+                        &table.common.element_id,
+                        false,
+                    );
                     check_color(
                         theme,
                         cell.background_color.as_ref(),
@@ -454,6 +570,15 @@ fn validate_element(
                     page_idx,
                     out,
                     &m.common.element_id,
+                );
+            } else {
+                diag(
+                    out,
+                    page_idx,
+                    format!(
+                        "media element `{}` requires a poster image (png/jpg)",
+                        m.common.element_id
+                    ),
                 );
             }
         }
@@ -847,24 +972,43 @@ const VALID_PRESET_SHAPES: &[&str] = &[
 ];
 
 fn check_shape_name(shape: &Shape, page_idx: usize, out: &mut Vec<Diagnostic>) {
-    let element_id = &shape.common.element_id;
-    if shape.shape_name == "custom" {
-        if shape.view_box.is_none() {
+    check_shape_fields(
+        "shape",
+        &shape.common.element_id,
+        &shape.shape_name,
+        shape.view_box.is_some(),
+        shape.path.is_some(),
+        page_idx,
+        out,
+    );
+}
+
+fn check_shape_fields(
+    kind: &str,
+    element_id: &str,
+    shape_name: &str,
+    has_view_box: bool,
+    has_path: bool,
+    page_idx: usize,
+    out: &mut Vec<Diagnostic>,
+) {
+    if shape_name == "custom" {
+        if !has_view_box {
             diag(
                 out,
                 page_idx,
-                format!("custom shape `{element_id}` requires viewBox"),
+                format!("custom {kind} `{element_id}` requires viewBox"),
             );
         }
-        if shape.path.is_none() {
+        if !has_path {
             diag(
                 out,
                 page_idx,
-                format!("custom shape `{element_id}` requires path"),
+                format!("custom {kind} `{element_id}` requires path"),
             );
         }
-    } else if !VALID_PRESET_SHAPES.contains(&shape.shape_name.as_str()) {
-        let suggestion = match shape.shape_name.as_str() {
+    } else if !VALID_PRESET_SHAPES.contains(&shape_name) {
+        let suggestion = match shape_name {
             "circle" => " (did you mean `ellipse`?)",
             "rectangle" => " (did you mean `rect`?)",
             "rounded_rect" | "roundedRectangle" => " (did you mean `roundRect`?)",
@@ -873,10 +1017,7 @@ fn check_shape_name(shape: &Shape, page_idx: usize, out: &mut Vec<Diagnostic>) {
         diag(
             out,
             page_idx,
-            format!(
-                "shape `{element_id}` has unknown shapeName `{}`{suggestion}",
-                shape.shape_name
-            ),
+            format!("{kind} `{element_id}` has unknown shapeName `{shape_name}`{suggestion}"),
         );
     }
 }
@@ -912,6 +1053,7 @@ fn check_fill(
     page_idx: usize,
     out: &mut Vec<Diagnostic>,
     element_id: &str,
+    allow_image: bool,
 ) {
     let Some(f) = fill else { return };
     match f {
@@ -931,7 +1073,7 @@ fn check_fill(
             }
         }
         Fill::Image { src, .. } => {
-            if element_id != "page background" {
+            if !allow_image {
                 diag(
                     out,
                     page_idx,
@@ -961,6 +1103,18 @@ fn check_border(
         element_id,
         "border color",
     );
+    if let Some(grad) = &b.gradient {
+        for stop in &grad.stops {
+            check_color(
+                theme,
+                Some(&stop.color),
+                page_idx,
+                out,
+                element_id,
+                "border gradient stop color",
+            );
+        }
+    }
 }
 
 fn check_border_spec(
@@ -1015,7 +1169,25 @@ fn check_image_file(
     if src.starts_with("http://") || src.starts_with("https://") || src.starts_with("data:") {
         return;
     }
-    let path = root_dir.join(src);
+    let rel = Path::new(src);
+    let escapes = rel.is_absolute()
+        || rel.components().any(|c| {
+            matches!(
+                c,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        });
+    if escapes {
+        diag(
+            out,
+            page_idx,
+            format!("image `{element_id}` references `{src}`, which must be a project-relative path"),
+        );
+        return;
+    }
+    let path = root_dir.join(rel);
     if !path.is_file() {
         diag(
             out,
@@ -1024,14 +1196,35 @@ fn check_image_file(
                 "image `{element_id}` references missing file `{src}` (file not found in project)"
             ),
         );
+        return;
+    }
+    if let (Ok(root), Ok(resolved)) = (root_dir.canonicalize(), path.canonicalize()) {
+        if !resolved.starts_with(&root) {
+            diag(
+                out,
+                page_idx,
+                format!(
+                    "image `{element_id}` references `{src}`, which escapes the project directory"
+                ),
+            );
+        }
     }
 }
 
-fn check_rich_text_tags(text: &Text, page_idx: usize, out: &mut Vec<Diagnostic>) {
-    let raw = &text.content.text;
-    let mut rest = raw.as_str();
+fn check_rich_text_tags(element_id: &str, raw: &str, page_idx: usize, out: &mut Vec<Diagnostic>) {
+    let mut rest = raw;
     while let Some(lt) = rest.find('<') {
         let tag_slice = &rest[lt..];
+        let after_lt = &tag_slice[1..];
+        let is_tag_start = match after_lt.as_bytes() {
+            [b, ..] if b.is_ascii_alphabetic() => true,
+            [b'/', b, ..] if b.is_ascii_alphabetic() => true,
+            _ => false,
+        };
+        if !is_tag_start {
+            rest = after_lt;
+            continue;
+        }
         if let Some(gt) = tag_slice.find('>') {
             let tag_content = tag_slice[1..gt].trim();
             let name = tag_content
@@ -1040,6 +1233,15 @@ fn check_rich_text_tags(text: &Text, page_idx: usize, out: &mut Vec<Diagnostic>)
                 .unwrap_or("")
                 .trim_end_matches('/');
             let name_clean = name.trim_start_matches('/');
+            if name_clean == "latex" && !name.starts_with('/') {
+                let after_open = &tag_slice[gt + 1..];
+                if let Some(close) = after_open.find("</latex>") {
+                    rest = &after_open[close + "</latex>".len()..];
+                    continue;
+                } else {
+                    break;
+                }
+            }
             const VALID_TAGS: &[&str] = &[
                 "p", "span", "strong", "b", "em", "i", "u", "s", "strike", "del", "br", "code",
                 "latex", "a", "sup", "sub",
@@ -1049,8 +1251,7 @@ fn check_rich_text_tags(text: &Text, page_idx: usize, out: &mut Vec<Diagnostic>)
                     out,
                     page_idx,
                     format!(
-                        "text `{}` contains unsupported tag `<{name}>` (supported: <p>, <span>, <strong>, <em>, <b>, <i>, <u>, <s>, <sup>, <sub>, <a href>, <code>, <latex>, <br>)",
-                        text.common.element_id
+                        "text `{element_id}` contains unsupported tag `<{name}>` (supported: <p>, <span>, <strong>, <em>, <b>, <i>, <u>, <s>, <sup>, <sub>, <a href>, <code>, <latex>, <br>)"
                     ),
                 );
             }
@@ -1065,17 +1266,13 @@ fn check_rich_text_tags(text: &Text, page_idx: usize, out: &mut Vec<Diagnostic>)
 /// `\(…\)`). The emitter cannot render commands outside its supported subset,
 /// and quietly printing the raw command on the slide is the failure mode this
 /// check exists to prevent, so every unsupported command is a hard error.
-fn check_latex_commands(text: &Text, page_idx: usize, out: &mut Vec<Diagnostic>) {
-    let raw = text.content.text.as_str();
+fn check_latex_commands(element_id: &str, raw: &str, page_idx: usize, out: &mut Vec<Diagnostic>) {
     for span in latex_bodies(raw) {
         for problem in crate::pptx::math::latex_problems(span.body) {
             diag(
                 out,
                 page_idx,
-                format!(
-                    "text `{}`: {problem} (inside `{}`)",
-                    text.common.element_id, span.open
-                ),
+                format!("text `{element_id}`: {problem} (inside `{}`)", span.open),
             );
         }
     }
@@ -1102,8 +1299,8 @@ fn check_latex_commands(text: &Text, page_idx: usize, out: &mut Vec<Diagnostic>)
             out,
             page_idx,
             format!(
-                "text `{}`: a display-only math environment (align/gather/eqnarray) needs a paragraph of its own (inside `{}`)",
-                text.common.element_id, span.open
+                "text `{element_id}`: a display-only math environment (align/gather/eqnarray) needs a paragraph of its own (inside `{}`)",
+                span.open
             ),
         );
     }
@@ -1151,18 +1348,34 @@ fn latex_bodies(raw: &str) -> Vec<LatexSpan<'_>> {
     out
 }
 
-/// The paragraphs of a rich-text string: the contents of each `<p>…</p>`, or the
-/// whole string when it carries no paragraph tags.
+/// The paragraphs of a rich-text string: the contents of each `<p>…</p>` or
+/// `<p ...>…</p>`, or the whole string when it carries no paragraph tags.
 fn paragraphs(raw: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let mut rest = raw;
-    while let Some(start) = rest.find("<p>") {
-        let after = &rest[start + 3..];
-        let Some(end) = after.find("</p>") else {
+    while let Some(start) = rest.find("<p") {
+        let after_p = &rest[start + 2..];
+        let valid_boundary = after_p
+            .as_bytes()
+            .first()
+            .is_some_and(|b| *b == b'>' || *b == b'/' || b.is_ascii_whitespace());
+        if !valid_boundary {
+            rest = after_p;
+            continue;
+        }
+        let Some(gt) = after_p.find('>') else {
             break;
         };
-        out.push(&after[..end]);
-        rest = &after[end + 4..];
+        let after_open = &after_p[gt + 1..];
+        if after_p[..gt].trim_end().ends_with('/') {
+            rest = after_open;
+            continue;
+        }
+        let Some(end) = after_open.find("</p>") else {
+            break;
+        };
+        out.push(&after_open[..end]);
+        rest = &after_open[end + 4..];
     }
     if out.is_empty() {
         out.push(raw);

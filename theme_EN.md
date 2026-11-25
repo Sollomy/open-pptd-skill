@@ -12,7 +12,7 @@ Name a theme ID in the prompt, for example:
 Use open-pptd with theme pine-green-strategy to make an AI strategy consulting deck, about 12 pages
 ```
 
-The agent loads the matching `design.md` (or the numbered catalog `.md`) as the sole style source.
+The agent loads the matching `design.md` as the sole style source (extra-catalog entries provide palette references only, without standalone `design.md` specs).
 
 ---
 

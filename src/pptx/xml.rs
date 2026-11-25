@@ -13,6 +13,7 @@ pub fn escape(text: &str) -> String {
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&apos;"),
+            c if c < '\x20' && !matches!(c, '\t' | '\n' | '\r') => {}
             _ => out.push(c),
         }
     }

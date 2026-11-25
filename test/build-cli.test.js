@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -9,42 +9,28 @@ import { fileURLToPath } from "node:url";
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const cli = join(projectRoot, "bin", "open-pptd-skill.js");
 
-function createStubBinary(dir, exitCode = 42) {
+function createStubBinary(dir, exitCode = 42, name = "stub-pptd") {
   const isWin = process.platform === "win32";
-  const stubJs = join(dir, "stub.js");
-  writeFileSync(
-    stubJs,
-    `import { writeFileSync } from "node:fs";
+  const body = `import { writeFileSync } from "node:fs";
 const log = process.env.STUB_LOG;
 if (log) {
   writeFileSync(log, JSON.stringify(process.argv.slice(2)), "utf8");
 }
 process.exit(${exitCode});
-`,
-    "utf8",
-  );
+`;
 
   if (isWin) {
-    const stubCmd = join(dir, "stub-pptd.cmd");
+    const stubJs = join(dir, `${name}.mjs`);
+    writeFileSync(stubJs, body, "utf8");
+    const stubCmd = join(dir, `${name}.cmd`);
     writeFileSync(stubCmd, `@echo off\r\nnode "${stubJs}" %*\r\n`, "utf8");
     return stubCmd;
   }
 
-  const stubSh = join(dir, "stub-pptd");
-  writeFileSync(
-    stubSh,
-    `#!/usr/bin/env node
-import { writeFileSync } from "node:fs";
-const log = process.env.STUB_LOG;
-if (log) {
-  writeFileSync(log, JSON.stringify(process.argv.slice(2)), "utf8");
-}
-process.exit(${exitCode});
-`,
-    "utf8",
-  );
-  chmodSync(stubSh, 0o755);
-  return stubSh;
+  const stubBin = join(dir, name);
+  writeFileSync(stubBin, `#!/usr/bin/env node\n${body}`, "utf8");
+  chmodSync(stubBin, 0o755);
+  return stubBin;
 }
 
 test("build forwards to native binary specified by PPTD_BIN with unchanged arguments and exit code", () => {
@@ -92,6 +78,89 @@ test("build forwards exit code 0 on success", () => {
     assert.equal(result.status, 0, `stderr: ${result.stderr}`);
     const recordedArgs = JSON.parse(readFileSync(logFile, "utf8"));
     assert.deepEqual(recordedArgs, ["build", "deck.pptd"]);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("convert, check, and dump forward directly to native pptd binary", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "pptd-forward-test-"));
+  const logFile = join(tempDir, "args.json");
+  const stubBinary = createStubBinary(tempDir, 7);
+
+  try {
+    const cases = [
+      ["convert", "in.pptx", "out_dir", "--json"],
+      ["check", "deck.pptd"],
+      ["dump", "deck.pptd"],
+    ];
+    for (const args of cases) {
+      const result = spawnSync(process.execPath, [cli, ...args], {
+        env: {
+          ...process.env,
+          PPTD_BIN: stubBinary,
+          STUB_LOG: logFile,
+        },
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 7, `${args[0]} stderr: ${result.stderr}`);
+      assert.deepEqual(JSON.parse(readFileSync(logFile, "utf8")), args);
+    }
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("discovers native pptd binary in ~/.local/bin/pptd", { skip: process.platform === "win32" }, () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "pptd-localbin-test-"));
+  const localBinDir = join(tempDir, ".local", "bin");
+  mkdirSync(localBinDir, { recursive: true });
+  const logFile = join(tempDir, "args.json");
+  createStubBinary(localBinDir, 0, "pptd");
+
+  try {
+    const result = spawnSync(process.execPath, [cli, "check", "deck.pptd"], {
+      env: {
+        ...process.env,
+        PPTD_BIN: "",
+        HOME: tempDir,
+        USERPROFILE: tempDir,
+        PATH: dirname(process.execPath),
+        STUB_LOG: logFile,
+      },
+      encoding: "utf8",
+    });
+
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    assert.deepEqual(JSON.parse(readFileSync(logFile, "utf8")), ["check", "deck.pptd"]);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("discovers native pptd binary via PATH", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "pptd-path-test-"));
+  const binDir = join(tempDir, "bin");
+  mkdirSync(binDir, { recursive: true });
+  const logFile = join(tempDir, "args.json");
+  createStubBinary(binDir, 0, "pptd");
+  const delimiter = process.platform === "win32" ? ";" : ":";
+
+  try {
+    const result = spawnSync(process.execPath, [cli, "dump", "deck.pptd"], {
+      env: {
+        ...process.env,
+        PPTD_BIN: "",
+        HOME: tempDir,
+        USERPROFILE: tempDir,
+        PATH: `${binDir}${delimiter}${dirname(process.execPath)}`,
+        STUB_LOG: logFile,
+      },
+      encoding: "utf8",
+    });
+
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    assert.deepEqual(JSON.parse(readFileSync(logFile, "utf8")), ["dump", "deck.pptd"]);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

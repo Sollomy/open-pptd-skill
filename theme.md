@@ -12,7 +12,7 @@ Skill 内置多套设计系统，**仅在用户点名时使用**（自选设计�
 使用 open-pptd，主题用 pine-green-strategy，做一份 AI 战略咨询 PPT，12 页左右
 ```
 
-Agent 会读取对应 `design.md`（或补充目录下的同名 `.md`）作为唯一风格源。
+Agent 会读取对应 `design.md` 作为唯一风格源（补充目录仅提供配色参考，无独立 `design.md`）。
 
 ---
 

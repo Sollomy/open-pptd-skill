@@ -10,7 +10,7 @@ npx skills add https://github.com/shiquda/open-pptd-skill -g -y -a codex
 
 上例安装到 Codex；使用其他 Agent 时，将 `codex` 换成对应的 skills Agent 标识。
 
-安装技能需要网络；本地 `pptd` 编译器就绪后，构建与转换可离线运行。[完整安装步骤](#-快速安装与就绪首选且唯一推荐) · [语法与能力边界](skills/open-pptd/reference/pptd.md) · [MIT 许可证](LICENSE) / [第三方署名](NOTICE)
+安装技能需要网络；本地 `pptd` 编译器就绪后，构建与转换可离线运行。[完整安装步骤](#-快速安装与就绪首选且唯一推荐) · [语法与能力边界](skills/open-pptd/reference/pptd.md) · [GNU AGPL v3.0+ 许可证](LICENSE) / [第三方署名](NOTICE)
 
 [![由 PPTD 生成的小米 YU7 PPTX，在 PowerPoint 中显示可编辑幻灯片](docs/images/example-yu7-pptx.png)](example/yu7-ppt/)
 
@@ -214,11 +214,11 @@ PPTD=../../target/debug/pptd ./verify_all.sh   # 用本地构建的二进制
 | `src/pptd/**`（parser、AST、validate、layout、theme、animation） | `cargo test --lib` | 70 个内联单元测试，不需要 fixture 文稿 | 28.6 s（含首次编译） |
 | 单个集成测试目标 | `cargo test --test <name>` | 断言层隔离，**不省编译成本**：单 crate，任何 `--test` 都会重编整个 `open_pptd` | — |
 | `src/pptx/{writer,xml,opc,package,table,media}` | `cargo test --test build_pptx --test schema_guard` | 生成层与 OOXML 结构守卫 | — |
-| `src/pptx/import.rs`（反编译）、`src/hash.rs`（`.sync.hash` 覆盖保护） | `cargo test --test reverse --test guard` | PPTX→PPTD 往返与覆盖保护 | — |
-| 渲染或校验层的行为变化 | `cd tests/decks && PPTD=../../target/debug/pptd ./verify_all.sh` | 12 套真实文稿 / 98 页的 check → build → validate | 约 10 s（README 记录） |
+| `src/pptx/import/`（反编译）、`src/hash.rs`（`.sync.hash` 覆盖保护） | `cargo test --test reverse --test guard` | PPTX→PPTD 往返与覆盖保护 | — |
+| 渲染或校验层的行为变化 | `PPTD=target/debug/pptd ./tests/decks/verify_all.sh` | 12 套真实文稿 / 107 页的 check → build → validate | 约 10 s（README 记录） |
 | 需要看页面图 | `RENDER=1 ./verify_all.sh` | 额外用 LibreOffice 渲染 + 接触表 | 未测；需 `soffice` 与 `pdftoppm` |
 
-**必须跑全量**（`cargo clippy --all-targets -- -D warnings && cargo test --all-targets && npm test`，与 CI `ci.yml` 一致）的情况：
+**必须跑全量**（`cargo clippy --all-targets -- -D warnings && cargo test --all-targets && npm test && python3 -m unittest discover -s skills/open-pptd/tests -v`，与 CI `ci.yml` 一致）的情况：
 
 - 改动跨层：同时动 `src/**` 与 `test/**`/`skills/**`，或动到 CLI 参数契约（`src/bin/pptd.rs`）这类被 node 测试和 Rust 测试共同钉住的地方。
 - 改 `Cargo.toml`、`package.json`、`.github/workflows/**`：依赖与产物形状变化，全量重跑。
@@ -227,9 +227,8 @@ PPTD=../../target/debug/pptd ./verify_all.sh   # 用本地构建的二进制
 
 **已知边界**：
 
-- CI 只跑 `clippy` + `cargo test --all-targets` + `npm test`。**Python 测试、`verify_all.sh`、`cargo fmt --check` 都不在 CI 里**（workflow 装了 rustfmt 组件但从未执行 fmt 检查），需要本地跑。
-- `scripts/install-hooks.sh` 指向的 `.githooks/` 目录在仓库里不存在，因此没有可用的 pre-commit 门禁。
-- `cargo test --test <name>` 只隔离断言，不隔离编译：单 crate 结构下所有集成测试都要先编译整个库（`src/pptx/import.rs` 与 `src/pptx/render.rs` 合计约 7 400 行）。
+- CI 跑 `clippy` + `cargo test --all-targets` + `npm test` + `python3 -m unittest`。**`verify_all.sh` 与 `cargo fmt --check` 不在 CI 里**，需要本地跑。
+- `cargo test --test <name>` 只隔离断言，不隔离编译：单 crate 结构下所有集成测试都要先编译整个库。
 - 本机实测参考（2026-10-28，arm64 macOS，相对较新的 `target/`）：`cargo test --all-targets` 19.0 s；`npm test` 8.8 s；`python3 -m unittest discover` 3.5 s。
 
 </details>
@@ -238,7 +237,7 @@ PPTD=../../target/debug/pptd ./verify_all.sh   # 用本地构建的二进制
 
 ## 📄 开源协议与致谢 (License & Attribution)
 
-本项目采用 [MIT 许可证](LICENSE)。
+本项目采用 [GNU Affero General Public License v3.0 或更高版本（AGPL-3.0-or-later）](LICENSE)。所含上游 MIT 授权代码之原始版权与许可声明完整保留于 [LICENSE-MIT](LICENSE-MIT) 与 [NOTICE](NOTICE)。
 
 ### 鸣谢与上游开源项目致谢：
 1. **`open-kimi-ppt-skill`**：

@@ -30,10 +30,23 @@ test("serves the PPTD editor and its JavaScript modules", async () => {
   });
 });
 
-test("returns 404 for files outside the packaged editor", async () => {
+test("returns 404 for missing files", async () => {
   await withServer(async (url) => {
     const response = await fetch(`${url}/missing.js`);
     assert.equal(response.status, 404);
+  });
+});
+
+test("rejects path traversal, malformed URIs, and non-GET/HEAD methods", async () => {
+  await withServer(async (url) => {
+    const traversal = await fetch(`${url}/..%2fpackage.json`);
+    assert.equal(traversal.status, 403);
+
+    const malformed = await fetch(`${url}/%ZZ`);
+    assert.equal(malformed.status, 400);
+
+    const post = await fetch(`${url}/`, { method: "POST" });
+    assert.equal(post.status, 405);
   });
 });
 

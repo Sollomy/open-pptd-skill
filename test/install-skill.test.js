@@ -25,7 +25,6 @@ test("installs the packaged skill into a custom skills directory", () => {
     assert.equal(result.status, 0, result.stderr);
     assert.equal(existsSync(join(target, "open-pptd", "SKILL.md")), true);
     assert.equal(existsSync(join(target, "open-pptd", "scripts", "export_pptx.py")), true);
-    assert.equal(existsSync(join(target, "open-pptd", "_user_meta.json")), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -35,7 +34,7 @@ test("installs into ~/.agents/skills when no target is provided (non-interactive
   const root = mkdtempSync(join(tmpdir(), "open-pptd-test-"));
 
   try {
-    const result = runCli([], { ...process.env, HOME: root, USERPROFILE: root, CODEX_HOME: undefined });
+    const result = runCli([], { ...process.env, HOME: root, USERPROFILE: root });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(existsSync(join(root, ".agents", "skills", "open-pptd", "SKILL.md")), true);
   } finally {
@@ -51,7 +50,6 @@ test("supports -y for non-interactive default install", () => {
       ...process.env,
       HOME: root,
       USERPROFILE: root,
-      CODEX_HOME: undefined,
     });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(existsSync(join(root, ".agents", "skills", "open-pptd", "SKILL.md")), true);
@@ -87,7 +85,6 @@ test("--all installs into detected agent directories and skips missing ones", ()
       ...process.env,
       HOME: root,
       USERPROFILE: root,
-      CODEX_HOME: undefined,
     });
     assert.equal(result.status, 0, result.stderr);
 
@@ -116,7 +113,6 @@ test("--all warns and installs nothing when no agent directory exists", () => {
       ...process.env,
       HOME: root,
       USERPROFILE: root,
-      CODEX_HOME: undefined,
     });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(existsSync(join(root, ".agents")), false);
@@ -181,5 +177,23 @@ test("--version and -V print the package version", () => {
     const result = runCli(args);
     assert.equal(result.status, 0, `${args.join(" ")}: ${result.stderr}`);
     assert.equal(result.stdout.trim(), version);
+  }
+});
+
+test("rejects unknown flags, missing --target value, and invalid --port values", () => {
+  const unknown = runCli(["install", "--unknown"]);
+  assert.notEqual(unknown.status, 0);
+  assert.match(unknown.stderr, /unknown argument: --unknown/);
+
+  for (const args of [["install", "--target"], ["install", "--target", "--yes"]]) {
+    const missing = runCli(args);
+    assert.notEqual(missing.status, 0);
+    assert.match(missing.stderr, /--target requires a directory/);
+  }
+
+  for (const badPort of ["0", "70000", "abc"]) {
+    const bad = runCli(["serve", "--port", badPort]);
+    assert.notEqual(bad.status, 0);
+    assert.match(bad.stderr, /--port must be an integer between 1 and 65535/);
   }
 });

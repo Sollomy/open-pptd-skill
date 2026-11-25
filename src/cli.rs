@@ -394,7 +394,7 @@ fn run_build(entry: &Path, output: Option<&Path>, force: bool) -> i32 {
         }
     }
 
-    match pptx::writer::PptxWriter::new(&project).build(&output_path) {
+    match pptx::writer::PptxWriter::new(&project).build_validated(&output_path) {
         Ok(()) => {
             println!("wrote {}", output_path.display());
             // Bookkeeping: the freshly written output becomes the recorded

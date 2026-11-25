@@ -1,5 +1,7 @@
 //! Integration tests: loading the demo PPTD project from disk.
 
+mod common;
+
 use std::path::Path;
 
 use open_pptd::pptd;
@@ -227,5 +229,37 @@ fn accepts_valid_layout_reference() {
     assert!(
         diags.is_empty(),
         "valid layout ref must not warn, got {diags:?}"
+    );
+}
+
+#[test]
+fn rejects_unsupported_manifest_version() {
+    let (_dir, entry) = common::write_deck(
+        "bad-version",
+        "version: v1\nsize: [960, 540]\npages: [pages/p.page]\n",
+        &[("p.page", "elements: []\n")],
+    );
+    let err = pptd::load_project(&entry)
+        .expect_err("version: v1 must be rejected")
+        .to_string();
+    assert!(
+        err.contains("v1") || err.contains("version"),
+        "expected version error, got: {err}"
+    );
+}
+
+#[test]
+fn rejects_missing_page_file() {
+    let (_dir, entry) = common::write_deck(
+        "missing-page",
+        "version: v2\nsize: [960, 540]\npages: [pages/does_not_exist.page]\n",
+        &[],
+    );
+    let err = pptd::load_project(&entry)
+        .expect_err("missing .page file must fail load_project")
+        .to_string();
+    assert!(
+        err.contains("does_not_exist.page"),
+        "expected missing page path in error, got: {err}"
     );
 }

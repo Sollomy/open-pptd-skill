@@ -138,7 +138,7 @@ elements:
       color: "$fg"
       text: |
         <p><strong>A. 全稠密自注意力 (Full Dense) · 复杂度 \( O(N^2) \)</strong></p>
-        <p style="color:#868686;">全向图连通，无信息遗失；但计算与显存开销随 \( N \) 呈二次方爆炸。</p>
+        <p><span style=\"color:#868686;\">全向图连通，无信息遗失；但计算与显存开销随 \( N \) 呈二次方爆炸。</span></p>
 
   # Pattern 2: Static Local
   - elementId: pat2-box
@@ -162,7 +162,7 @@ elements:
       color: "$fg"
       text: |
         <p><span style="color:#B51E00; font-weight:bold;">B. 静态带状/窗口稀疏 (Static Band/Local) · 复杂度 \( O(N \cdot W) \)</span></p>
-        <p style="color:#868686;">局限于对角线附近带状区域；<strong>致命缺陷：</strong>远距路径截断，多跳推理链发生结构性中断。</p>
+        <p><span style=\"color:#868686;\">局限于对角线附近带状区域；<strong>致命缺陷：</strong>远距路径截断，多跳推理链发生结构性中断。</span></p>
 
   # Pattern 3: Proposed Dynamic Routing
   - elementId: pat3-box
@@ -186,7 +186,7 @@ elements:
       color: "$fg"
       text: |
         <p><span style="color:#009682; font-weight:bold;">C. 本文提出：动态轻量路由稀疏 (DLR-Attn) · 复杂度 \( O(N \sqrt{N}) \)</span></p>
-        <p style="color:#868686;">查询自适应动态寻址：近端保留局部窗口，远端按语义聚类质心路由，兼具全局可达性与亚二次方效率。</p>
+        <p><span style=\"color:#868686;\">查询自适应动态寻址：近端保留局部窗口，远端按语义聚类质心路由，兼具全局可达性与亚二次方效率。</span></p>
 
   - elementId: gap-summary
     elementType: text
@@ -213,4 +213,4 @@ elements:
       fontSize: 10
       color: "$gray"
       text: |
-        <p>面向长上下文推理的稀疏注意力机制 · 博士学位论文答辩 <span style="float:right;">§2 文献鸿沟 ｜ 03 / 10</span></p>
+        <p>面向长上下文推理的稀疏注意力机制 · 博士学位论文答辩 · §2 文献鸿沟 ｜ 03 / 10</p>
