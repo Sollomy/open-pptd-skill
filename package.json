@@ -2,7 +2,7 @@
   "name": "open-pptd",
   "version": "1.4.2",
   "description": "Open-source, 100% offline declarative presentation engine (PPTD) with native Rust compiler and AI coding agent skill.",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "author": "shiquda",
   "homepage": "https://github.com/shiquda/open-pptd-skill#readme",
   "repository": {

@@ -10,7 +10,7 @@ npx skills add https://github.com/shiquda/open-pptd-skill -g -y -a codex
 
 上例安装到 Codex；使用其他 Agent 时，将 `codex` 换成对应的 skills Agent 标识。
 
-安装技能需要网络；本地 `pptd` 编译器就绪后，构建与转换可离线运行。[完整安装步骤](#-快速安装与就绪首选且唯一推荐) · [语法与能力边界](skills/open-pptd/reference/pptd.md) · [MIT 许可证](LICENSE) / [第三方署名](NOTICE)
+安装技能需要网络；本地 `pptd` 编译器就绪后，构建与转换可离线运行。[完整安装步骤](#-快速安装与就绪首选且唯一推荐) · [语法与能力边界](skills/open-pptd/reference/pptd.md) · [GNU AGPL v3.0+ 许可证](LICENSE) / [第三方署名](NOTICE)
 
 [![由 PPTD 生成的小米 YU7 PPTX，在 PowerPoint 中显示可编辑幻灯片](docs/images/example-yu7-pptx.png)](example/yu7-ppt/)
 
@@ -237,7 +237,7 @@ PPTD=../../target/debug/pptd ./verify_all.sh   # 用本地构建的二进制
 
 ## 📄 开源协议与致谢 (License & Attribution)
 
-本项目采用 [MIT 许可证](LICENSE)。
+本项目采用 [GNU Affero General Public License v3.0 或更高版本（AGPL-3.0-or-later）](LICENSE)。所含上游 MIT 授权代码之原始版权与许可声明完整保留于 [LICENSE-MIT](LICENSE-MIT) 与 [NOTICE](NOTICE)。
 
 ### 鸣谢与上游开源项目致谢：
 1. **`open-kimi-ppt-skill`**：
