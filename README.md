@@ -22,15 +22,18 @@ This one-time setup needs Node.js, Python 3, and an internet connection. If Node
 
 ## How to Use
 
-Describe the slides you need in plain language—topic, slide count, audience, and preferred style. Your assistant will deliver a ready-to-open `.pptx` file along with a saved source folder so you can request edits later without rebuilding from scratch.
+Describe the slides you need in plain language—or adapt the example below as a template. Your assistant will deliver a ready-to-open `.pptx` file along with a saved source folder so you can request edits later without rebuilding from scratch.
 
 **Create a new presentation:**
 
 ```text
-Use open-pptd to create an 8-slide Q3 Business Review presentation:
-- Clean navy-and-white executive style
-- Include a cover slide, a KPI summary table, a quarterly milestone flow, and speaker notes on every slide
-- Save the output as Q3_Review.pptx
+Use open-pptd to create an 8-slide keynote presentation on "Distributed Systems Architecture Evolution":
+- Theme style: Dark Fintech (ebony-ledger) or Deep Blue Academic (deep-blue-atlas)
+- Content requirements:
+  1. Cover, architectural pain points, blueprint diagram (with arrowed connectors and vector cards), and performance metric comparison table;
+  2. Every slide must include speaker rehearsal notes (notes: "...");
+  3. Format algorithmic formulations using native LaTeX math;
+- Deliverables: Complete PPTD project directory and compiled PPTX deck, verified with validate_pptx.py.
 ```
 
 **Update an existing PowerPoint file:**
