@@ -2,7 +2,7 @@
 
 [Back to README](../README.md) · [日本語](../README_JA.md) · [简体中文](../README_ZH.md)
 
-This document holds the showcase previews, architecture details, capability matrix, boundaries, manual CLI installation, and developer verification guide moved out of the top-level README.
+This document holds the showcase previews, direct CLI usage, architecture details, capability matrix, boundaries, manual CLI installation, and verification suite moved out of the top-level README.
 
 ---
 
@@ -34,6 +34,21 @@ Installation separates two responsibilities:
 2. **Native compiler (`pptd`)**: `python3 ~/.agents/skills/open-pptd/scripts/install_binary.py` installs the standalone Rust binary. It pins a release version (`VERSION`, currently `1.4.2`), verifies the downloaded archive byte-for-byte against `SHA256SUMS.txt`, and falls back to `cargo install --tag v<version>` if downloads are unavailable.
 
 Remote-pipe installation (`curl ... | bash`) is neither provided nor recommended.
+
+---
+
+## Direct CLI Usage
+
+If you prefer running the `pptd` binary directly from a terminal:
+
+```bash
+pptd check my_deck/deck.pptd
+pptd build my_deck/deck.pptd -o slides.pptx
+pptd convert slides.pptx ./my_deck/
+python3 ~/.agents/skills/open-pptd/scripts/validate_pptx.py slides.pptx --expected-pages 8 --check-notes
+```
+
+See [CLI Reference](../skills/open-pptd/reference/cli.md) for all flags and subcommands.
 
 ---
 
@@ -123,7 +138,7 @@ For manual archive downloads from a GitHub Release, download `pptd-<version>-<os
 
 ---
 
-## Developer Verification & Regression Suite
+## Verification & Regression Suite
 
 Run targeted suites according to the layer changed, or run the full CI suite for cross-layer edits:
 

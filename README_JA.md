@@ -2,51 +2,48 @@
 
 [English](README.md) | [日本語](README_JA.md) | [简体中文](README_ZH.md)
 
-オフラインで動作する宣言的 PowerPoint（`.pptx`）コンパイラおよび AI コーディングエージェント向けスキルです。YAML（`.pptd` + `.page`）でスライドを記述し、Rust 製ネイティブバイナリ `pptd` で編集可能な `.pptx` を生成したり、既存の `.pptx` を PPTD に逆変換したりできます。
+AI アシスタントを使って、オフラインで編集可能な PowerPoint（`.pptx`）資料を作成・修正できるツールです。
+
+生成されるスライドは画像ではなく PowerPoint 標準のテキスト・表・図形・発表者ノートで構成されるため、そのまま自由に手直しできます。処理はすべてご自身のパソコン内で完結し、資料を外部クラウドへ送信しません。既存の `.pptx` ファイルを取り込んで内容を更新・整形することもできます。
 
 ## インストール
 
-次の指示をそのままコピーし、お使いの AI コーディングエージェント（Codex、Claude Code、Cursor など）へ送ってください。
+ご自身でコマンドを入力する必要はありません。下の文章をそのままコピーし、パソコン上の操作に対応した AI アシスタント（Claude Code、Codex、Cursor、WorkBuddy など）に送ってください。
 
 ```text
-open-pptd スキルをインストールして設定してください：
+open-pptd スキルをインストールして使えるようにしてください：
 1. 次を実行：npx github:Sollomy/open-pptd-skill install -y
 2. 次を実行：python3 ~/.agents/skills/open-pptd/scripts/install_binary.py
 3. `pptd --version` で動作確認してください（見つからない場合は `$HOME/.local/bin` を `PATH` に追加してください）。
-4. 完了したら報告してください。
+4. 準備ができたら教えてください。
 ```
 
-初回セットアップには Node.js、Python 3、およびネットワーク接続が必要です。`pptd` の導入後は、ビルドと変換のいずれも完全にオフラインで動作します。
+初回セットアップにのみ Node.js、Python 3、およびインターネット接続が必要です。Node.js や Python 3 がまだ入っていない場合は、先に導入を手伝うよう AI アシスタントへ頼んでください。設定が終われば、資料の作成と修正は完全にオフラインで行えます。
 
 ## 使い方
 
-### AI エージェントで作成する
+テーマ、枚数、読み手、好みの雰囲気などを普段どおりの言葉で伝えてください。そのまま開ける `.pptx` ファイルと、後から部分修正しやすい作業用フォルダの両方が保存されます。
 
-テーマ、スライド枚数、希望するスタイルをそのまま伝えてください。編集可能な PPTD ソース一式と、コンパイル済みの `.pptx` ファイルの両方が出力されます。
+**新しい資料を作る例：**
 
 ```text
-open-pptd を使って「分散システムアーキテクチャ」に関する8枚のプレゼン資料を作成してください：
-- テーマ：deep-blue-atlas
-- 表紙、矢印コネクタ付きの構成図、指標比較表、全ページの発表者ノートを含めること
-- 完了後、validate_pptx.py で品質チェックを実行すること
+open-pptd を使って、第3四半期の業績報告スライドを8枚作ってください：
+- 落ち着いた紺色と白を基調としたビジネス向けのデザイン
+- 表紙、主要KPIのまとめ表、四半期マイルストーンの流れ図、全ページの発表者ノートを含めること
+- 完成ファイルは Q3_Review.pptx として保存すること
 ```
 
-### CLI から直接実行する
+**既存の PowerPoint ファイルを修正する例：**
 
-```bash
-pptd check my_deck/deck.pptd
-pptd build my_deck/deck.pptd -o slides.pptx
-pptd convert slides.pptx ./my_deck/
-python3 ~/.agents/skills/open-pptd/scripts/validate_pptx.py slides.pptx --expected-pages 8 --check-notes
+```text
+open-pptd を使って report.pptx を読み込み、4枚目の第3四半期の数字を更新し、レイアウトを整えて report_updated.pptx として書き出してください。
 ```
 
-## ドキュメント
+## 詳しい情報
 
-- [詳細ガイド・技術リファレンス（英語）](docs/GUIDE.md) — 作例、導入アーキテクチャ、機能一覧、制約事項、手動インストール、検証手順
-- [エージェント向けスキル手順書](skills/open-pptd/SKILL.md)
-- [PPTD v2 構文仕様](skills/open-pptd/reference/pptd.md)
-- [テーマ配色一覧](theme_EN.md)
-- [CLI リファレンス](skills/open-pptd/reference/cli.md)
+- [詳細ガイド・技術リファレンス（英語）](docs/GUIDE.md) — 作例プレビュー、コマンドラインでの直接実行、機能一覧、制約事項、手動インストール、テスト手順
+- [テーマ配色一覧（英語）](theme_EN.md) — 名前で指定できる組み込みデザイン配色
+- [スキル手順書](skills/open-pptd/SKILL.md) — AI アシスタントが自動で参照する作成ルール
 
 ## ライセンス
 
